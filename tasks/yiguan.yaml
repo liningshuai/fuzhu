@@ -1,0 +1,24 @@
+# 自动驿馆（示例任务，界面流程需按实际游戏调整）
+name: 自动驿馆
+
+steps:
+  - action: tap_image
+    template: yiguan/entry.png       # 驿馆入口
+    threshold: 0.85
+    timeout: 10
+    after_sleep: 1.5
+
+  # 有可领取/可刷新的就点，没有就跳过
+  - action: tap_image
+    template: yiguan/claim.png
+    optional: true
+    timeout: 5
+    after_sleep: 1.2
+
+  - action: tap_image
+    template: common/confirm.png
+    optional: true
+    timeout: 4
+
+  - action: back
+    times: 1

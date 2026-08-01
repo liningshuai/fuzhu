@@ -1,0 +1,13 @@
+# 运行产物
+captures/
+logs/
+__pycache__/
+*.pyc
+
+# 本地环境
+.venv/
+venv/
+
+# 系统文件
+Thumbs.db
+.DS_Store

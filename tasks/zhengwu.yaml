@@ -1,0 +1,25 @@
+# 自动政务（示例任务，界面流程需按实际游戏调整）
+# ------------------------------------------------------------
+# 流程假设：主界面 -> 政务入口 -> 循环处理政务直到"处理"按钮消失 -> 返回
+name: 自动政务
+
+steps:
+  - action: tap_image
+    template: zhengwu/entry.png      # 政务入口图标
+    threshold: 0.85
+    timeout: 10
+    after_sleep: 1.5
+
+  # 循环点"处理/同意"按钮，直到它不再出现（最多 30 轮防止死循环）
+  - action: repeat
+    until_gone: zhengwu/handle_btn.png
+    max_loops: 30
+    steps:
+      - action: tap_image
+        template: zhengwu/handle_btn.png
+        optional: true
+        timeout: 3
+        after_sleep: 1.2
+
+  - action: back
+    times: 1

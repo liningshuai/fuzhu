@@ -1,0 +1,32 @@
+# 自动领邮件（示例任务）
+# ------------------------------------------------------------
+# 注意：下面引用的模板图（templates/mail/ 下的 png）需要你自己
+# 从游戏截图里裁剪出来，步骤见 README「制作模板图」一节。
+# 流程假设：主界面 -> 点邮件图标 -> 点一键领取 -> 确认 -> 返回主界面
+# 实际界面不同的话，照着改步骤即可。
+name: 自动领邮件
+
+steps:
+  # 1. 在主界面找到邮件图标并点击
+  - action: tap_image
+    template: mail/mail_icon.png     # 主界面上的邮件入口图标
+    threshold: 0.85
+    timeout: 10
+    after_sleep: 1.5
+
+  # 2. 点"一键领取"按钮（没有可领的就跳过）
+  - action: tap_image
+    template: mail/claim_all.png     # 一键领取按钮
+    optional: true
+    timeout: 5
+    after_sleep: 1.5
+
+  # 3. 领取后一般会弹奖励结算窗，点一下空白处/确认关掉
+  - action: tap_image
+    template: common/confirm.png     # 通用"确认"按钮
+    optional: true
+    timeout: 4
+
+  # 4. 返回主界面
+  - action: back
+    times: 1
