@@ -1,24 +1,98 @@
-# 自动驿馆（示例任务，界面流程需按实际游戏调整）
+# 自动驿馆
+# 入口：主城底部「升级驿馆」进度条 → 建筑面板 → 功能页签 → 领取/操作 → 返回
 name: 自动驿馆
 
 steps:
+  # 1) 入口（已在驿馆面板则跳过）
   - action: tap_image
-    template: yiguan/entry.png       # 驿馆入口
-    threshold: 0.85
-    timeout: 10
-    after_sleep: 1.5
+    template: yiguan/entry.png
+    optional: true
+    threshold: 0.80
+    timeout: 1.0
+    interval: 0.25
+    after_sleep: 0.8
+    skip_if_image: yiguan/title.png
+    skip_threshold: 0.85
 
-  # 有可领取/可刷新的就点，没有就跳过
+  - action: tap_xy
+    x: 540
+    y: 1680
+    after_sleep: 1.0
+    skip_if_image: yiguan/title.png
+    skip_threshold: 0.85
+
+  # 2) 点有内容的功能页签
+  - action: tap_image
+    template: yiguan/tab.png
+    optional: true
+    threshold: 0.80
+    timeout: 2
+    interval: 0.25
+    after_sleep: 0.6
+
+  - action: tap_xy
+    x: 450
+    y: 345
+    after_sleep: 0.5
+
+  # 3) 确认面板
+  - action: wait_image
+    template: yiguan/title.png
+    threshold: 0.80
+    timeout: 5
+    interval: 0.25
+
+  # 4) 领取/操作按钮（有则点）
   - action: tap_image
     template: yiguan/claim.png
     optional: true
-    timeout: 5
-    after_sleep: 1.2
+    threshold: 0.80
+    timeout: 1.2
+    interval: 0.25
+    after_sleep: 0.7
+
+  - action: tap_xy
+    x: 775
+    y: 921
+    after_sleep: 0.5
+
+  - action: tap_xy
+    x: 540
+    y: 900
+    after_sleep: 0.35
 
   - action: tap_image
-    template: common/confirm.png
+    template: yiguan/claim2.png
     optional: true
-    timeout: 4
+    threshold: 0.80
+    timeout: 0.8
+    interval: 0.2
+    after_sleep: 0.6
+
+  - action: tap_xy
+    x: 775
+    y: 1254
+    after_sleep: 0.5
+
+  - action: tap_xy
+    x: 540
+    y: 900
+    after_sleep: 0.35
+
+  # 5) 返回（多退几层防卡在建筑面板）
+  - action: tap_image
+    template: yiguan/back.png
+    optional: true
+    threshold: 0.80
+    timeout: 1.5
+    interval: 0.25
+    after_sleep: 0.5
+
+  - action: tap_xy
+    x: 70
+    y: 190
+    after_sleep: 0.4
 
   - action: back
-    times: 1
+    times: 2
+    between_sleep: 0.4

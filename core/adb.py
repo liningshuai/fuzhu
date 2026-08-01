@@ -72,10 +72,13 @@ class ADBClient:
         return img
 
     def screen_size(self) -> tuple:
-        out = self._run("shell", "wm", "size")
-        # 形如 "Physical size: 1920x1080"
-        part = out.strip().split(":")[-1].strip()
-        w, h = part.split("x")
+        """返回当前逻辑分辨率 (宽, 高)，与截图/点击坐标一致。
+
+        注意：雷电物理分辨率可能是 1920x1080，但竖屏游戏运行时
+        逻辑尺寸会旋转为 1080x1920，必须以截图实际像素为准。
+        """
+        img = self.screenshot()
+        h, w = img.shape[:2]
         return int(w), int(h)
 
     # ------------------------------------------------------------------ #
@@ -103,11 +106,29 @@ class ADBClient:
     # 应用
     # ------------------------------------------------------------------ #
     def start_app(self, package: str) -> None:
+        """启动应用。优先 am start（雷电部分镜像无 monkey），失败再回退 monkey。"""
         log.info("启动应用 %s", package)
-        self._run(
-            "shell", "monkey", "-p", package,
-            "-c", "android.intent.category.LAUNCHER", "1",
-        )
+        try:
+            # 用 cmd package 解析 LAUNCHER Activity，比 monkey 更通用
+            out = self._run(
+                "shell", "cmd", "package", "resolve-activity",
+                "--brief", package,
+            )
+            activity = ""
+            for line in out.strip().splitlines():
+                line = line.strip()
+                if "/" in line and not line.startswith("priority="):
+                    activity = line
+            if activity:
+                self._run("shell", "am", "start", "-n", activity)
+            else:
+                raise ADBError("未解析到 LAUNCHER Activity")
+        except ADBError:
+            # 兼容旧环境
+            self._run(
+                "shell", "monkey", "-p", package,
+                "-c", "android.intent.category.LAUNCHER", "1",
+            )
         time.sleep(3)
 
     def stop_app(self, package: str) -> None:

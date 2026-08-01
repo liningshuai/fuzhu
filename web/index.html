@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>fuzhu 控制台 · Phase1</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>fuzhu 控制台</h1>
+        <p class="sub">单设备串行队列 · 本机访问 · 识图真机 / 协议 mock（不会操作游戏）</p>
+      </div>
+      <div class="badge" id="healthBadge">检测中…</div>
+    </header>
+
+    <!-- LAN allow_lan=true：管理口令仅内存 + 请求头 X-Admin-Token，禁止 URL/本地存储 -->
+    <section class="card auth-gate" id="authGate" hidden>
+      <h2>管理口令</h2>
+      <p class="muted auth-hint">
+        当前为局域网模式。口令仅通过请求头 <code>X-Admin-Token</code> 发送，
+        不会写入地址栏、Cookie 或本地存储。刷新页面后需重新输入。
+      </p>
+      <form id="authForm" autocomplete="off">
+        <label class="field">
+          <span>管理口令</span>
+          <input
+            id="adminTokenInput"
+            type="password"
+            name="admin_password_field"
+            autocomplete="current-password"
+            placeholder="输入管理口令"
+            required
+          />
+        </label>
+        <p class="auth-error" id="authError" hidden></p>
+        <button class="btn primary" type="submit" id="btnAuthSubmit">进入控制台</button>
+      </form>
+    </section>
+
+    <div id="mainPanels" hidden>
+      <section class="card notice">
+        <strong>通道说明</strong>
+        <ul class="channel-legend">
+          <li><span class="tag channel-vision">本地识图执行</span> 通过 ADB 截图点模拟器（需游戏在线）</li>
+          <li><span class="tag channel-mock">协议模拟（mock，不会操作游戏）</span> 仅假数据，不连游戏服</li>
+          <li><span class="tag channel-na">不可用</span> 当前任务无可用实现</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div class="row between">
+          <h2>角色 / 设备</h2>
+          <button class="btn ghost" id="btnRefresh" type="button">刷新</button>
+        </div>
+        <label class="field">
+          <span>当前角色</span>
+          <select id="roleSelect"></select>
+        </label>
+        <div class="role-meta" id="roleMeta">—</div>
+        <div class="role-meta" id="deviceMeta">设备：—</div>
+      </section>
+
+      <section class="card">
+        <div class="row between">
+          <h2>任务开关</h2>
+          <button class="btn primary" id="btnRunEnabled" type="button">跑已启用</button>
+        </div>
+        <div id="taskList" class="task-list">加载中…</div>
+      </section>
+
+      <section class="card">
+        <div class="row between">
+          <h2>Job / 执行日志</h2>
+          <span class="muted" id="pollHint">自动刷新 2.5s</span>
+        </div>
+        <div id="logList" class="log-list">暂无</div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      默认 <code>http://127.0.0.1:8787</code> · SQLite <code>data/fuzhu.db</code> ·
+      protocol 仅为 mock
+    </footer>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

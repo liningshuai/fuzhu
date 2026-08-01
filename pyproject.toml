@@ -1,16 +1,45 @@
 [project]
 name = "fuzhu"
-version = "0.1.0"
-description = "雷电模拟器《三国兵临天下》日常自动化脚本（ADB + OpenCV 屏幕自动化）"
+version = "0.4.1"
+description = "《三国兵临天下》辅助：单设备 Web 控制 + 识图 + 协议 mock"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "opencv-python>=4.8",
     "numpy>=1.24",
     "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+fuzhu-api = "api.app:run"
+fuzhu-seed = "api.seed:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["common", "protocol", "api", "core", "vision_worker"]
+
 [tool.uv]
-# 这是脚本型项目，不作为 Python 包构建安装，
-# uv sync 只负责创建 .venv 并装好依赖
-package = false
+package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+    # Starlette TestClient 与当前 httpx 组合的兼容提示（非业务告警；不安装未知 httpx2）
+    "ignore:.*httpx.*starlette\\.testclient.*:Warning",
+    "ignore:.*Using `httpx` with `starlette\\.testclient`.*:Warning",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

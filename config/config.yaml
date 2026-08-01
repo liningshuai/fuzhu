@@ -4,11 +4,23 @@
 # 日志级别: DEBUG / INFO / WARNING
 log_level: INFO
 
+# Web API（Phase1：默认仅本机）
+api:
+  host: "127.0.0.1"
+  port: 8787
+  # 局域网访问默认关闭。若改为 true，必须同时设置 admin_token，且会绑定 0.0.0.0
+  allow_lan: false
+  admin_token: ""
+  # SQLite 路径（相对项目根或绝对路径）
+  db_path: "data/fuzhu.db"
+  default_device_id: "local-ldplayer"
+  default_device_name: "本地雷电"
+
 adb:
   # 雷电模拟器自带 adb，建议直接指向雷电安装目录，例如:
   #   D:/leidian/LDPlayer9/adb.exe
   # 如果系统 PATH 里已有 adb，保持 "adb" 即可
-  adb_path: adb
+  adb_path: "D:/leidian/LDPlayer14/adb.exe"
   # 雷电第 1 个模拟器实例通常是 5555，第 2 个是 5557，依此类推
   # 也可先运行 adb devices 查看
   serial: "127.0.0.1:5555"
@@ -17,9 +29,10 @@ game:
   # 游戏包名（三国兵临天下）。
   # 获取方法：模拟器里打开游戏后运行  python main.py info
   # 把 mCurrentFocus 行里 "/" 前面的包名填到这里
-  package: ""
-  # 制作模板图时使用的分辨率，务必与雷电设置一致并保持不变
-  resolution: [1920, 1080]
+  package: "com.sgbltx.goodgame"
+  # 制作模板图时使用的分辨率（宽x高），务必与雷电设置一致并保持不变
+  # 实测截图像素为 1080x1920（竖屏），不是横屏 1920x1080
+  resolution: [1080, 1920]
 
 # ============================================================
 # 任务列表：按顺序执行。enabled: true 才会运行。
@@ -28,8 +41,8 @@ game:
 #   60  = 每 60 分钟跑一次
 # ============================================================
 tasks:
-  - file: mail.yaml          # 自动领邮件
-    enabled: false
+  - file: mail.yaml          # 自动领邮件（一键阅读）
+    enabled: true
     interval_minutes: 120
 
   - file: zhengwu.yaml       # 自动政务

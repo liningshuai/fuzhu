@@ -15,9 +15,10 @@ templates/
 
 ## 制作要求
 
-1. 必须在与 `config.yaml` 中 `resolution` 一致的分辨率下截图（默认 1920x1080），
-   之后不要改模拟器分辨率，否则所有模板要重做。
-2. 用 `python main.py shot` 截屏，再用
-   `python tools/crop_template.py captures/xxx.png` 框选裁剪。
+1. 必须在与 `config.yaml` 中 `resolution` 一致的分辨率下截图。
+   本项目实测《三国兵临天下》为竖屏 **1080x1920**（模拟器物理分辨率可以是
+   1080P，游戏运行时会旋转）。之后不要改模拟器分辨率，否则所有模板要重做。
+2. 用 `uv run main.py shot` 截屏，再用
+   `uv run tools/crop_template.py captures/xxx.png` 框选裁剪。
 3. 裁剪时框紧一点，只保留按钮/图标本身，少带背景。
 4. 避免裁剪会变化的区域（数字角标、倒计时文字等）。

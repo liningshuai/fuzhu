@@ -3,6 +3,20 @@ captures/
 logs/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# SQLite 与本地数据（持久化目录，勿提交库文件）
+data/*
+!data/.gitkeep
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+# 任意位置的 SQLite 文件，防止本地数据误提交
+*.sqlite
 
 # 本地环境
 .venv/
@@ -11,3 +25,11 @@ venv/
 # 系统文件
 Thumbs.db
 .DS_Store
+.env
+.env.*
+
+# 日志、密钥与本地覆盖配置（防误提交本地密钥/证书/覆盖配置）
+*.log
+*.pem
+*.key
+config/config.local.yaml

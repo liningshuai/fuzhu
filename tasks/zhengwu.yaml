@@ -1,25 +1,101 @@
-# 自动政务（示例任务，界面流程需按实际游戏调整）
+# 自动政务
 # ------------------------------------------------------------
-# 流程假设：主界面 -> 政务入口 -> 循环处理政务直到"处理"按钮消失 -> 返回
+# 成功语义（Phase 1）：
+#   1) 前置：确认进入政务页（zhengwu/title.png）
+#   2) 若无 accept 按钮 → blocked（无可操作政务）
+#   3) 循环直到 accept 消失，且至少发生过有效点击
+#   4) 后置：accept 已消失；返回后不再要求假成功
+# 禁止：固定循环 N 次、什么都没做仍 succeeded
 name: 自动政务
 
 steps:
+  # 1) 主城点「任务」（已在政务界面则跳过）
   - action: tap_image
-    template: zhengwu/entry.png      # 政务入口图标
-    threshold: 0.85
-    timeout: 10
-    after_sleep: 1.5
+    template: zhengwu/task_entry.png
+    optional: true
+    threshold: 0.80
+    timeout: 1.0
+    interval: 0.25
+    after_sleep: 0.7
+    skip_if_image: zhengwu/title.png
+    skip_threshold: 0.85
 
-  # 循环点"处理/同意"按钮，直到它不再出现（最多 30 轮防止死循环）
+  - action: tap_xy
+    x: 180
+    y: 1610
+    after_sleep: 0.9
+    skip_if_image: zhengwu/title.png
+    skip_threshold: 0.85
+
+  # 2) 「政务」分页
+  - action: tap_image
+    template: zhengwu/tab.png
+    optional: true
+    threshold: 0.80
+    timeout: 2.5
+    interval: 0.25
+    after_sleep: 0.5
+
+  # 3) 【前置确认】在政务页
+  - action: wait_image
+    template: zhengwu/title.png
+    threshold: 0.80
+    timeout: 6
+    interval: 0.25
+    on_missing: fail
+
+  # 4) 循环：直到「接受」按钮消失；首轮无按钮 → blocked
   - action: repeat
-    until_gone: zhengwu/handle_btn.png
-    max_loops: 30
+    until_gone: zhengwu/accept.png
+    max_loops: 8
+    threshold: 0.72
+    empty_is_blocked: true
+    require_progress: true
+    empty_message: "政务页无可接受任务（未检测到接受按钮），不能标记为成功"
+    on_missing: blocked
     steps:
+      - action: tap_xy
+        x: 540
+        y: 1200
+        after_sleep: 0.35
       - action: tap_image
-        template: zhengwu/handle_btn.png
+        template: zhengwu/accept.png
         optional: true
-        timeout: 3
-        after_sleep: 1.2
+        threshold: 0.72
+        timeout: 1.2
+        interval: 0.25
+        after_sleep: 0.75
+      - action: tap_xy
+        x: 539
+        y: 1739
+        after_sleep: 0.65
+      - action: tap_xy
+        x: 540
+        y: 900
+        after_sleep: 0.4
+
+  # 5) 【后置验证】接受按钮应已消失
+  - action: wait_gone
+    template: zhengwu/accept.png
+    threshold: 0.72
+    timeout: 3
+    interval: 0.3
+    on_missing: blocked
+
+  # 6) 返回主城
+  - action: tap_image
+    template: zhengwu/back.png
+    optional: true
+    threshold: 0.80
+    timeout: 2
+    interval: 0.25
+    after_sleep: 0.5
+
+  - action: tap_xy
+    x: 85
+    y: 210
+    after_sleep: 0.4
 
   - action: back
     times: 1
+    between_sleep: 0.35

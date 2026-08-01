@@ -1,32 +1,91 @@
-# 自动领邮件（示例任务）
+# 自动领邮件
 # ------------------------------------------------------------
-# 注意：下面引用的模板图（templates/mail/ 下的 png）需要你自己
-# 从游戏截图里裁剪出来，步骤见 README「制作模板图」一节。
-# 流程假设：主界面 -> 点邮件图标 -> 点一键领取 -> 确认 -> 返回主界面
-# 实际界面不同的话，照着改步骤即可。
+# 成功语义（Phase 1）：
+#   1) 前置：确认进入邮件界面（mail/title.png）
+#   2) 操作：点击一键阅读（mail/claim_all.png，必须命中）
+#   3) 后置：一键阅读按钮消失，且关闭后离开邮件界面
+# 任一验证失败 → failed/blocked，绝不能假成功
 name: 自动领邮件
 
 steps:
-  # 1. 在主界面找到邮件图标并点击
+  # 1) 更多已打开 → 直接点邮件（找不到尽快跳过）
   - action: tap_image
-    template: mail/mail_icon.png     # 主界面上的邮件入口图标
+    template: mail/mail_icon_only.png
+    optional: true
     threshold: 0.85
-    timeout: 10
-    after_sleep: 1.5
+    timeout: 0.6
+    interval: 0.2
+    after_sleep: 0.6
 
-  # 2. 点"一键领取"按钮（没有可领的就跳过）
-  - action: tap_image
-    template: mail/claim_all.png     # 一键领取按钮
-    optional: true
-    timeout: 5
-    after_sleep: 1.5
+  # 2) 打开「更多」（若已在邮件界面则跳过）
+  - action: tap_xy
+    x: 1017
+    y: 1613
+    after_sleep: 0.7
+    skip_if_image: mail/title.png
+    skip_threshold: 0.85
 
-  # 3. 领取后一般会弹奖励结算窗，点一下空白处/确认关掉
+  # 3) 点邮件（若已在邮件界面则跳过）
   - action: tap_image
-    template: common/confirm.png     # 通用"确认"按钮
-    optional: true
+    template: mail/mail_icon_only.png
+    threshold: 0.85
     timeout: 4
+    interval: 0.25
+    after_sleep: 0.6
+    skip_if_image: mail/title.png
+    skip_threshold: 0.85
+    on_missing: fail
 
-  # 4. 返回主界面
-  - action: back
-    times: 1
+  # 4) 【前置确认】必须进入邮件界面
+  - action: wait_image
+    template: mail/title.png
+    threshold: 0.85
+    timeout: 5
+    interval: 0.25
+    on_missing: fail
+
+  # 5) 【操作】一键阅读（必须点到，否则无法验证领取）
+  - action: tap_image
+    template: mail/claim_all.png
+    threshold: 0.85
+    timeout: 4
+    interval: 0.25
+    after_sleep: 0.7
+    on_missing: blocked
+
+  # 6) 【后置验证】一键阅读按钮应消失（否则无法确认领取结果）
+  - action: wait_gone
+    template: mail/claim_all.png
+    threshold: 0.85
+    timeout: 6
+    interval: 0.3
+    on_missing: blocked
+
+  # 7) 点空白关浮层
+  - action: tap_xy
+    x: 540
+    y: 1100
+    after_sleep: 0.35
+
+  # 8) 关闭邮件
+  - action: tap_image
+    template: mail/close.png
+    threshold: 0.85
+    timeout: 3
+    interval: 0.25
+    after_sleep: 0.35
+    region: [20, 250, 200, 420]
+    on_missing: fail
+
+  - action: tap_xy
+    x: 95
+    y: 340
+    after_sleep: 0.4
+
+  # 9) 【后置验证】已离开邮件界面
+  - action: wait_gone
+    template: mail/title.png
+    threshold: 0.85
+    timeout: 5
+    interval: 0.3
+    on_missing: fail
