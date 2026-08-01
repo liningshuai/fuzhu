@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at   TEXT,
     finished_at  TEXT,
     duration_ms  INTEGER,
+    failure_code TEXT,
+    user_message TEXT NOT NULL DEFAULT '',
+    retryable    INTEGER,
+    tech_summary TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (role_id) REFERENCES roles(role_id)
 );
 
@@ -134,6 +138,29 @@ def connect() -> sqlite3.Connection:
 def init_schema(conn: Optional[sqlite3.Connection] = None) -> None:
     c = conn or connect()
     c.executescript(SCHEMA)
+    migrate_jobs_diagnostics(c)
+
+
+def migrate_jobs_diagnostics(conn: Optional[sqlite3.Connection] = None) -> None:
+    """幂等：为历史 jobs 表补齐诊断字段（可重复执行）。"""
+    c = conn or connect()
+    rows = c.execute("PRAGMA table_info(jobs)").fetchall()
+    # sqlite3.Row or tuple
+    names = set()
+    for r in rows:
+        try:
+            names.add(r["name"])
+        except (TypeError, KeyError, IndexError):
+            names.add(r[1])
+    alters = [
+        ("failure_code", "TEXT"),
+        ("user_message", "TEXT NOT NULL DEFAULT ''"),
+        ("retryable", "INTEGER"),
+        ("tech_summary", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    for col, decl in alters:
+        if col not in names:
+            c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
 
 
 def close_thread_connection() -> None:

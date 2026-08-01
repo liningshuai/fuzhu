@@ -188,16 +188,67 @@ def _role_or_404(role_id: str) -> RoleContext:
     return role
 
 
+def _job_event_dict(event) -> Dict[str, Any]:
+    """JobEvent 对外序列化：仅 id/job_id/ts/level/message；message 经安全过滤。"""
+    from api.store import safe_event_message
+
+    ts = event.ts.isoformat() if getattr(event, "ts", None) else None
+    return {
+        "id": event.id,
+        "job_id": event.job_id,
+        "ts": ts,
+        "level": event.level if event.level in ("info", "warn", "error") else "info",
+        "message": safe_event_message(event.message),
+    }
+
+
 def _job_dict(job) -> Dict[str, Any]:
-    d = job.model_dump(mode="json")
-    d["extras"] = redact_secrets(d.get("extras") or {})
-    d["channel_label"] = (job.extras or {}).get("channel") or (
+    """对外 Job 视图：含诊断字段；不返回 extras（防历史 extras_json 脏值）。"""
+    from api.store import safe_public_message, store as _store
+
+    duration = job.duration_ms
+    if duration is None and job.started_at and job.finished_at:
+        try:
+            duration = int((job.finished_at - job.started_at).total_seconds() * 1000)
+        except Exception:  # noqa: BLE001
+            duration = None
+
+    qpos = None
+    if job.route == ExecRoute.VISION:
+        qpos = _store.vision_queue_position(job.job_id)
+    # running：固定 0；protocol：null
+    if job.route == ExecRoute.VISION and job.status == JobStatus.RUNNING:
+        qpos = 0
+
+    # channel_label 仅来自 job.route，绝不读 extras_json
+    channel_label = (
         "本地识图执行"
         if job.route == ExecRoute.VISION
         else "协议模拟（mock，不会操作游戏）"
     )
-    d["is_terminal"] = job.status in JobStatus.terminal()
-    return d
+
+    um = safe_public_message(job.user_message or job.message or "")
+    return {
+        "job_id": job.job_id,
+        "role_id": job.role_id,
+        "device_id": job.device_id,
+        "task_key": job.task_key.value,
+        "route": job.route.value,
+        "status": job.status.value,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "duration_ms": duration,
+        "failure_code": job.failure_code.value if job.failure_code else None,
+        "user_message": um,
+        "retryable": job.retryable,
+        "queue_position": qpos,
+        "result_code": job.result_code.value if job.result_code else None,
+        "message": um,
+        "channel_label": channel_label,
+        "is_terminal": job.status in JobStatus.terminal(),
+        # 故意省略 extras：历史库 extras_json 可能含任意敏感值
+    }
 
 
 # ---------- API ----------
@@ -218,6 +269,8 @@ def health() -> Dict[str, Any]:
 
 @app.get("/api/meta")
 def meta() -> Dict[str, Any]:
+    from common.models import FailureCode
+
     return {
         "channels": {
             "vision": "本地识图执行",
@@ -225,6 +278,12 @@ def meta() -> Dict[str, Any]:
             "unavailable": "不可用",
         },
         "job_statuses": [s.value for s in JobStatus],
+        "failure_codes": [c.value for c in FailureCode],
+        "queue_position_rules": {
+            "vision_running": 0,
+            "vision_queued": "1-based FIFO among queued on same device",
+            "non_vision": None,
+        },
         "phase": 1,
         "limits": {
             "devices": 1,
@@ -382,13 +441,13 @@ def _submit_payload(sr) -> Dict[str, Any]:
         "result": {
             "ok": job.status == JobStatus.SUCCEEDED,
             "code": job.result_code.value if job.result_code else job.status.value,
-            "message": job.message,
+            "message": _job_dict(job).get("message") or "",
             "task_key": job.task_key.value,
             "route": job.route.value,
             "job_id": job.job_id,
             "status": job.status.value,
             "duration_ms": job.duration_ms,
-            "extras": redact_secrets(job.extras or {}),
+            # 不返回 extras（与 job 视图一致）
         },
     }
 
@@ -474,7 +533,7 @@ def get_job_api(job_id: str) -> Dict[str, Any]:
     events = store.list_job_events(job_id)
     return {
         "job": _job_dict(job),
-        "events": [e.model_dump(mode="json") for e in events],
+        "events": [_job_event_dict(e) for e in events],
     }
 
 

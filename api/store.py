@@ -15,6 +15,7 @@ from api.db import close_thread_connection, connect, init_schema
 from common.models import (
     DeviceTarget,
     ExecRoute,
+    FailureCode,
     Job,
     JobEvent,
     JobStatus,
@@ -94,6 +95,142 @@ def redact_secrets(data: Any) -> Any:
     if isinstance(data, list):
         return [redact_secrets(x) for x in data]
     return data
+
+
+# ---------- 诊断文本安全（写入与 API 输出共用） ----------
+_UNSAFE_KEYWORDS = (
+    "traceback",
+    "password",
+    "token",
+    "cookie",
+    "authorization",
+    "passwd",
+    "secret",
+    "screenshot",
+    "adb",
+)
+
+# 允许原样落库/展示的固定安全事件文案（白名单）
+SAFE_EVENT_MESSAGES = frozenset(
+    {
+        "领取执行权，进入 running",
+        "FIFO 出队，进入 running",
+        "开始执行（已确认 running）",
+        "截图已保存（路径不展示）",
+        "任务步骤已记录",
+        "任务步骤已记录（protocol mock）",
+        "任务步骤已记录（vision）",
+        "任务步骤已记录（fake runner）",
+        "任务进度已记录（详情已省略）",
+        "设备忙，保持排队",
+        "任务已入队",
+        "任务已成功完成",
+        "任务已结束",
+        "任务执行失败",
+        "任务被阻止",
+    }
+)
+
+SAFE_FALLBACK_USER = "任务状态已更新，详情未展示（安全过滤）。"
+SAFE_FALLBACK_EVENT = "任务进度已记录（详情已省略）"
+
+
+def looks_unsafe(text: Optional[str]) -> bool:
+    """检测是否含凭据/路径/堆栈/ADB 等不可对外或不可原文入库的内容。"""
+    import re
+
+    s = text or ""
+    if not s:
+        return False
+    low = s.lower()
+    for kw in _UNSAFE_KEYWORDS:
+        if kw in low:
+            return True
+    if re.search(
+        r"(password|token|cookie|authorization|passwd|secret)\s*[:=]",
+        s,
+        re.I,
+    ):
+        return True
+    if re.search(r"[A-Za-z]:\\", s):  # Windows 路径
+        return True
+    if re.search(r"adb\s+(-s\s+|/)", s, re.I):
+        return True
+    if "traceback (most recent call last)" in low:
+        return True
+    if re.search(r"\bFile\s+\"[^\"]+\"", s):
+        return True
+    return False
+
+
+def safe_public_message(text: Optional[str], *, fallback: str = SAFE_FALLBACK_USER) -> str:
+    """API/UI 可见文案：不安全则固定 fallback。"""
+    s = (text or "").strip()
+    if not s:
+        return fallback
+    if looks_unsafe(s):
+        return fallback
+    # 限长，不保留可疑长异常
+    if len(s) > 240:
+        return fallback
+    return s
+
+
+def safe_event_message(text: Optional[str]) -> str:
+    """事件 message：仅白名单或明确安全的短状态句，否则固定省略文案。"""
+    s = (text or "").strip()
+    if s in SAFE_EVENT_MESSAGES:
+        return s
+    # 允许「结束 status=xxx」仅含枚举 status
+    import re
+
+    m = re.fullmatch(
+        r"任务结束：status=(queued|running|succeeded|failed|blocked|cancelled)"
+        r"(?: failure_code=[A-Z_]+)?",
+        s,
+    )
+    if m and not looks_unsafe(s):
+        return s
+    if s.startswith("设备忙") and not looks_unsafe(s) and len(s) < 80:
+        return "设备忙，保持排队"
+    if looks_unsafe(s) or not s:
+        return SAFE_FALLBACK_EVENT
+    # 非白名单且非状态句：一律省略，避免任意 runner 文本入库/出站
+    return SAFE_FALLBACK_EVENT
+
+
+def build_tech_summary(
+    *,
+    failure_code: Optional[str] = None,
+    result_code: Optional[str] = None,
+    error_type: Optional[str] = None,
+) -> str:
+    """仅由白名单元数据构造；禁止基于任意错误字符串。"""
+    import re
+
+    parts = []
+    if failure_code and re.fullmatch(r"[A-Z_]+", failure_code):
+        parts.append(f"failure_code={failure_code}")
+    if result_code and re.fullmatch(r"[A-Z_]+", result_code):
+        parts.append(f"result_code={result_code}")
+    if error_type and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", error_type):
+        parts.append(f"error_type={error_type}")
+    return ";".join(parts)
+
+
+# jobs.extras_json 唯一允许：固定 channel 枚举（与 route 绑定，非 runner 输入）
+_ALLOWED_EXTRA_CHANNELS = frozenset({"vision", "protocol_mock"})
+
+
+def channel_key_for_route(route: ExecRoute) -> str:
+    if route == ExecRoute.VISION:
+        return "vision"
+    return "protocol_mock"
+
+
+def safe_job_extras_for_route(route: ExecRoute) -> Dict[str, str]:
+    """生成可落库的 extras：严禁复制 TaskResult.extras。"""
+    return {"channel": channel_key_for_route(route)}
 
 
 class SQLiteStore:
@@ -384,8 +521,9 @@ class SQLiteStore:
                 """
                 INSERT INTO jobs(
                     job_id, role_id, device_id, task_key, route, status, message,
-                    result_code, extras_json, created_at, started_at, finished_at, duration_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    result_code, extras_json, created_at, started_at, finished_at, duration_ms,
+                    failure_code, user_message, retryable, tech_summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.job_id,
@@ -394,13 +532,20 @@ class SQLiteStore:
                     job.task_key.value,
                     job.route.value,
                     job.status.value,
-                    job.message or "",
+                    safe_public_message(job.message or job.user_message or ""),
                     job.result_code.value if job.result_code else None,
-                    _json_dumps(redact_secrets(job.extras or {})),
+                    _json_dumps(safe_job_extras_for_route(job.route)),
                     _dt_to_str(job.created_at) or _dt_to_str(utc_now()),
                     _dt_to_str(job.started_at),
                     _dt_to_str(job.finished_at),
                     job.duration_ms,
+                    job.failure_code.value if job.failure_code else None,
+                    safe_public_message(job.user_message or job.message or ""),
+                    None if job.retryable is None else (1 if job.retryable else 0),
+                    # tech_summary 必须已是受控构造；若含任意原文则置空
+                    ""
+                    if looks_unsafe(job.tech_summary)
+                    else (job.tech_summary or "")[:200],
                 ),
             )
         return job
@@ -413,18 +558,25 @@ class SQLiteStore:
                 """
                 UPDATE jobs SET
                     device_id=?, status=?, message=?, result_code=?, extras_json=?,
-                    started_at=?, finished_at=?, duration_ms=?
+                    started_at=?, finished_at=?, duration_ms=?,
+                    failure_code=?, user_message=?, retryable=?, tech_summary=?
                 WHERE job_id=?
                 """,
                 (
                     job.device_id,
                     job.status.value,
-                    job.message or "",
+                    safe_public_message(job.message or job.user_message or ""),
                     job.result_code.value if job.result_code else None,
-                    _json_dumps(redact_secrets(job.extras or {})),
+                    _json_dumps(safe_job_extras_for_route(job.route)),
                     _dt_to_str(job.started_at),
                     _dt_to_str(job.finished_at),
                     job.duration_ms,
+                    job.failure_code.value if job.failure_code else None,
+                    safe_public_message(job.user_message or job.message or ""),
+                    None if job.retryable is None else (1 if job.retryable else 0),
+                    ""
+                    if looks_unsafe(job.tech_summary)
+                    else (job.tech_summary or "")[:200],
                     job.job_id,
                 ),
             )
@@ -438,6 +590,19 @@ class SQLiteStore:
         return self._row_to_job(row) if row else None
 
     def _row_to_job(self, row) -> Job:
+        # 兼容历史库缺列
+        keys = set(row.keys()) if hasattr(row, "keys") else set()
+
+        def _col(name, default=None):
+            if keys and name not in keys:
+                return default
+            try:
+                return row[name]
+            except (KeyError, IndexError):
+                return default
+
+        fc = _col("failure_code")
+        retry = _col("retryable")
         return Job(
             job_id=row["job_id"],
             role_id=row["role_id"],
@@ -452,6 +617,10 @@ class SQLiteStore:
             started_at=_str_to_dt(row["started_at"]),
             finished_at=_str_to_dt(row["finished_at"]),
             duration_ms=row["duration_ms"],
+            failure_code=FailureCode(fc) if fc else None,
+            user_message=_col("user_message") or "",
+            retryable=None if retry is None else bool(retry),
+            tech_summary=_col("tech_summary") or "",
         )
 
     def list_jobs(
@@ -583,8 +752,9 @@ class SQLiteStore:
                     """
                     INSERT INTO jobs(
                         job_id, role_id, device_id, task_key, route, status, message,
-                        result_code, extras_json, created_at, started_at, finished_at, duration_ms
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        result_code, extras_json, created_at, started_at, finished_at, duration_ms,
+                        failure_code, user_message, retryable, tech_summary
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         draft.job_id,
@@ -595,11 +765,17 @@ class SQLiteStore:
                         JobStatus.QUEUED.value,
                         draft.message or "已入队",
                         None,
-                        _json_dumps(redact_secrets(draft.extras or {})),
+                        _json_dumps(safe_job_extras_for_route(draft.route)),
                         _dt_to_str(draft.created_at) or _dt_to_str(utc_now()),
                         None,
                         None,
                         None,
+                        draft.failure_code.value if draft.failure_code else None,
+                        safe_public_message(draft.user_message or draft.message or ""),
+                        None if draft.retryable is None else (1 if draft.retryable else 0),
+                        ""
+                        if looks_unsafe(draft.tech_summary)
+                        else (draft.tech_summary or "")[:200],
                     ),
                 )
                 conn.execute("COMMIT")
@@ -753,13 +929,15 @@ class SQLiteStore:
         screenshot_path: Optional[str] = None,
         ts: Optional[datetime] = None,
     ) -> JobEvent:
+        """写入事件：message 强制安全文案；永不持久化 screenshot_path。"""
         self.ensure_ready()
+        lvl = level if level in ("info", "warn", "error") else "info"
         event = JobEvent(
             job_id=job_id,
             ts=ts or utc_now(),
-            level=level,
-            message=message,
-            screenshot_path=screenshot_path,
+            level=lvl,
+            message=safe_event_message(message),
+            screenshot_path=None,
         )
         conn = connect()
         with self._lock:
@@ -773,7 +951,7 @@ class SQLiteStore:
                     _dt_to_str(event.ts),
                     event.level,
                     event.message,
-                    event.screenshot_path,
+                    None,
                 ),
             )
             event.id = int(cur.lastrowid)
@@ -807,7 +985,7 @@ class SQLiteStore:
         )
         st.last_job_id = job.job_id
         st.last_job_status = job.status
-        st.last_message = job.message or ""
+        st.last_message = job.user_message or job.message or ""
         st.last_route = job.route
         if job.status in JobStatus.terminal() or job.status == JobStatus.RUNNING:
             st.last_run_at = job.finished_at or job.started_at or utc_now()
@@ -819,7 +997,8 @@ class SQLiteStore:
             st.last_status = TaskStatusCode.BLOCKED
         elif job.status == JobStatus.FAILED:
             st.last_status = TaskStatusCode.TEMP_FAIL
-        st.last_extras = redact_secrets(dict(job.extras or {}))
+        # 不把 job.extras / runner extras 写入任务状态
+        st.last_extras = {}
         self._upsert_task_state(job.role_id, st)
 
     def apply_result(self, role_id: str, result: TaskResult) -> None:
@@ -831,39 +1010,53 @@ class SQLiteStore:
         )
         st.last_run_at = result.finished_at or utc_now()
         st.last_status = result.code
-        st.last_message = result.message
+        st.last_message = safe_public_message(result.message or "")
         st.last_route = result.route
-        st.last_extras = redact_secrets(dict(result.extras or {}))
+        st.last_extras = {}
         self._upsert_task_state(role_id, st)
 
     def list_logs(self, role_id: Optional[str] = None, limit: int = 50) -> List[dict]:
-        """以 Job 列表作为执行日志（新在前）。"""
+        """以 Job 列表作为执行日志（新在前）；含诊断字段，不含敏感/技术摘要。"""
         jobs = self.list_jobs(role_id=role_id, limit=limit)
         out = []
         for j in jobs:
+            qpos = (
+                self.vision_queue_position(j.job_id)
+                if j.route == ExecRoute.VISION
+                else None
+            )
+            um = safe_public_message(j.user_message or j.message or "")
             out.append(
                 {
                     "ts": _dt_to_str(j.finished_at or j.started_at or j.created_at),
+                    "created_at": _dt_to_str(j.created_at),
+                    "started_at": _dt_to_str(j.started_at),
+                    "finished_at": _dt_to_str(j.finished_at),
                     "role_id": j.role_id,
                     "task_key": j.task_key.value,
                     "job_id": j.job_id,
                     "ok": j.status == JobStatus.SUCCEEDED,
                     "code": j.result_code.value if j.result_code else j.status.value,
                     "status": j.status.value,
-                    "message": j.message,
+                    "message": um,
+                    "user_message": um,
+                    "failure_code": j.failure_code.value if j.failure_code else None,
+                    "retryable": j.retryable,
                     "route": j.route.value,
                     "duration_ms": j.duration_ms,
                     "device_id": j.device_id,
-                    "extras": redact_secrets(j.extras or {}),
+                    "queue_position": qpos,
+                    # 故意不返回 extras（历史 extras_json 可能含脏值）
                 }
             )
         return out
 
     def mark_interrupted_jobs(self) -> int:
-        """启动时把残留 queued/running 标为 failed。"""
+        """启动时把残留 queued/running 标为 failed + RECOVERED_AFTER_RESTART。"""
         self.ensure_ready()
         conn = connect()
         now = _dt_to_str(utc_now())
+        user_msg = "服务曾重启，该任务未能完成。可稍后在控制台手动再次执行。"
         with self._lock:
             cur = conn.execute(
                 """
@@ -874,11 +1067,15 @@ class SQLiteStore:
                         ELSE message || '（进程重启中断）'
                     END,
                     result_code='TEMP_FAIL',
+                    failure_code='RECOVERED_AFTER_RESTART',
+                    user_message=?,
+                    retryable=1,
+                    tech_summary='interrupted_by_process_restart',
                     finished_at=?,
                     duration_ms=COALESCE(duration_ms, 0)
                 WHERE status IN ('queued', 'running')
                 """,
-                (now,),
+                (user_msg, now),
             )
             n = cur.rowcount or 0
         if n:

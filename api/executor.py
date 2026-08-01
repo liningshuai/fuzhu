@@ -16,9 +16,14 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from api.device_lock import device_locks
-from api.store import redact_secrets, store
+from api.store import (
+    build_tech_summary,
+    safe_job_extras_for_route,
+    store,
+)
 from common.models import (
     ExecRoute,
+    FailureCode,
     Job,
     JobStatus,
     TaskKey,
@@ -70,9 +75,76 @@ def _map_result_to_job_status(result: TaskResult) -> JobStatus:
 
 
 def _channel_label(route: ExecRoute) -> str:
+    """仅用于中文展示/日志，不写入 extras_json。"""
     if route == ExecRoute.VISION:
         return "本地识图执行"
     return "协议模拟（mock，不会操作游戏）"
+
+
+# failure_code → 固定中文安全文案（用户可见，禁止拼接原文）
+_FIXED_USER_MSG = {
+    FailureCode.DEVICE_NOT_BOUND: "当前角色未绑定本机设备，无法执行识图任务。请先绑定设备后再试。",
+    FailureCode.DEVICE_BUSY_OR_QUEUED: "设备正忙或任务排队中，请等待当前任务结束后再试。",
+    FailureCode.PRECONDITION_NOT_MET: "未满足任务开始条件（界面可能不在预期位置）。请回到主城或对应界面后重试。",
+    FailureCode.TARGET_NOT_FOUND: "未找到预期的界面元素或按钮。请确认游戏画面后稍后重试。",
+    FailureCode.POSTCONDITION_NOT_MET: "操作后的界面状态未确认成功，请检查游戏界面后稍后重试。",
+    FailureCode.EXECUTION_ERROR: "本地执行出错，请稍后重试。",
+    FailureCode.RECOVERED_AFTER_RESTART: "服务曾重启，该任务未能完成。可稍后在控制台手动再次执行。",
+}
+
+
+def fixed_user_message(fc: Optional[FailureCode], *, success: bool = False) -> str:
+    if success:
+        return "任务已成功完成。"
+    if fc and fc in _FIXED_USER_MSG:
+        return _FIXED_USER_MSG[fc]
+    return "任务状态已更新，详情未展示（安全过滤）。"
+
+
+def classify_from_message(
+    message: str,
+    *,
+    code: Optional[TaskStatusCode] = None,
+    status: Optional[JobStatus] = None,
+) -> tuple:
+    """返回 (FailureCode|None, user_message, retryable|None)。user_message 仅固定文案。"""
+    msg = message or ""
+    low = msg.lower()
+
+    if "未绑定" in msg or ("device_id" in low and "绑定" in msg):
+        fc = FailureCode.DEVICE_NOT_BOUND
+        return fc, fixed_user_message(fc), False
+    if "进程重启" in msg or "进程重启中断" in msg:
+        fc = FailureCode.RECOVERED_AFTER_RESTART
+        return fc, fixed_user_message(fc), True
+    if "后置" in msg or "仍未消失" in msg or "后置验证" in msg:
+        fc = FailureCode.POSTCONDITION_NOT_MET
+        return fc, fixed_user_message(fc), True
+    if "前置" in msg or "未等到" in msg or "确认出现" in msg or "未进入" in msg:
+        fc = FailureCode.PRECONDITION_NOT_MET
+        return fc, fixed_user_message(fc), True
+    if (
+        "未找到" in msg
+        or "超时未找到" in msg
+        or "找不到" in msg
+        or "未检测到" in msg
+        or "无可接受" in msg
+    ):
+        fc = FailureCode.TARGET_NOT_FOUND
+        return fc, fixed_user_message(fc), True
+    if code in (
+        TaskStatusCode.BLOCKED,
+        TaskStatusCode.UNSUPPORTED,
+        TaskStatusCode.INVALID_CONFIG,
+    ):
+        if status == JobStatus.BLOCKED or status is None:
+            fc = FailureCode.PRECONDITION_NOT_MET
+            return fc, fixed_user_message(fc), True
+    if code == TaskStatusCode.BUSY:
+        fc = FailureCode.DEVICE_BUSY_OR_QUEUED
+        return fc, fixed_user_message(fc), True
+    fc = FailureCode.EXECUTION_ERROR
+    return fc, fixed_user_message(fc), True
 
 
 def _enrich_meta(job: Job) -> SubmitResult:
@@ -174,6 +246,9 @@ def submit_job(
             result_code=TaskStatusCode.INVALID_CONFIG,
             finished_at=utc_now(),
             duration_ms=0,
+            failure_code=FailureCode.PRECONDITION_NOT_MET,
+            user_message="角色不存在或配置无效，无法执行。",
+            retryable=False,
         )
         store.create_job(job)
         store.add_job_event(job.job_id, job.message, level="error")
@@ -196,7 +271,10 @@ def submit_job(
             result_code=TaskStatusCode.BLOCKED,
             finished_at=utc_now(),
             duration_ms=0,
-            extras={"channel": _channel_label(route)},
+            extras=safe_job_extras_for_route(route),
+            failure_code=FailureCode.DEVICE_NOT_BOUND,
+            user_message="当前角色未绑定本机设备，无法执行识图任务。请先绑定设备后再试。",
+            retryable=False,
         )
         store.create_job(job)
         store.add_job_event(job.job_id, job.message, level="error")
@@ -212,10 +290,9 @@ def submit_job(
         route=route,
         status=JobStatus.QUEUED,
         message="已入队",
-        extras={
-            "channel": _channel_label(route),
-            "impl": cfg.impl.value if cfg else "auto",
-        },
+        user_message="任务已入队，等待执行。",
+        retryable=True,
+        extras=safe_job_extras_for_route(route),
     )
 
     # 原子：同 role+task 复用，或创建独立 Job（绝不复用其他 task）
@@ -248,18 +325,25 @@ def submit_job(
     )
     store.apply_job_to_task_state(job)
 
-    # 尝试启动：Vision 可能因设备忙保持 queued
+    # 尝试启动：Vision 可能因设备忙保持 queued（不得标 failed）
     if route == ExecRoute.VISION:
         started = _try_start_job(job.job_id)
         if not started:
             running = store.find_running_vision_job(job.device_id or "")
+            j2 = store.get_job(job.job_id) or job
+            j2.message = "设备忙，保持排队"
+            j2.user_message = "设备正忙，任务已排队等待前序任务完成。"
+            # 排队说明：failure_code 用 DEVICE_BUSY_OR_QUEUED，status 仍为 queued
+            j2.failure_code = FailureCode.DEVICE_BUSY_OR_QUEUED
+            j2.retryable = True
+            store.update_job(j2)
             store.add_job_event(
                 job.job_id,
                 f"设备忙，保持 queued"
                 + (f"（running={running.job_id}）" if running else ""),
                 level="info",
             )
-            store.apply_job_to_task_state(store.get_job(job.job_id) or job)
+            store.apply_job_to_task_state(store.get_job(job.job_id) or j2)
     else:
         # protocol mock：不占设备队列，可立即执行
         _try_start_job(job.job_id)
@@ -294,18 +378,35 @@ def _execute_running_job(job_id: str) -> None:
 
     if route == ExecRoute.VISION:
         if not device_id:
-            _finalize_blocked(job, "角色未绑定设备（device_id），无法执行本地识图。")
+            _finalize_blocked(
+                job,
+                "角色未绑定设备（device_id），无法执行本地识图。",
+                failure_code=FailureCode.DEVICE_NOT_BOUND,
+                user_message="当前角色未绑定本机设备，无法执行识图任务。请先绑定设备后再试。",
+                retryable=False,
+            )
             return
         acquired, owner = device_locks.try_acquire(device_id, job.job_id)
         if not acquired:
-            # 进程内锁冲突：重新入队，避免伪造成功/失败吞任务
+            # 进程内锁冲突：重新入队（不得 failed）
             log.warning(
                 "device lock busy job=%s owner=%s — requeue", job_id, owner
             )
             store.requeue_job(job_id, message="设备进程锁忙，重新排队")
+            j2 = store.get_job(job_id)
+            if j2:
+                j2.failure_code = FailureCode.DEVICE_BUSY_OR_QUEUED
+                j2.user_message = "设备正忙，任务已重新排队。"
+                j2.retryable = True
+                store.update_job(j2)
             return
 
-    store.add_job_event(job.job_id, "开始执行（已确认 running，可访问 ADB/mock）")
+    store.add_job_event(job.job_id, "开始执行（已确认 running）")
+    # running 时清除排队类 failure_code
+    job.user_message = "正在执行…"
+    job.failure_code = None
+    job.retryable = None
+    store.update_job(job)
 
     try:
         if not role:
@@ -331,9 +432,10 @@ def _execute_running_job(job_id: str) -> None:
         log.exception("job %s unexpected error", job_id)
         result = TaskResult.fail(
             TaskStatusCode.TEMP_FAIL,
-            f"执行异常: {e}",
+            f"执行异常: {type(e).__name__}",
             task_key=job.task_key,
             route=route,
+            extras={"error_type": type(e).__name__},
         )
     finally:
         if route == ExecRoute.VISION and device_id:
@@ -346,17 +448,44 @@ def _execute_running_job(job_id: str) -> None:
         _dispatch_device(device_id)
 
 
-def _finalize_blocked(job: Job, message: str) -> None:
+def _finalize_blocked(
+    job: Job,
+    message: str,
+    *,
+    failure_code: Optional[FailureCode] = None,
+    user_message: str = "",
+    retryable: Optional[bool] = True,
+) -> None:
     job.status = JobStatus.BLOCKED
     job.result_code = TaskStatusCode.BLOCKED
     job.message = message
+    fc, um, rt = classify_from_message(
+        message, code=TaskStatusCode.BLOCKED, status=JobStatus.BLOCKED
+    )
+    job.failure_code = failure_code or fc
+    job.user_message = user_message or um
+    job.retryable = retryable if retryable is not None else rt
+    job.message = job.user_message
+    job.tech_summary = build_tech_summary(
+        failure_code=job.failure_code.value if job.failure_code else None,
+        result_code=TaskStatusCode.BLOCKED.value,
+    )
     job.finished_at = utc_now()
     if job.started_at:
         job.duration_ms = int((job.finished_at - job.started_at).total_seconds() * 1000)
     else:
         job.duration_ms = 0
     store.update_job(job)
-    store.add_job_event(job.job_id, message, level="error")
+    store.add_job_event(
+        job.job_id,
+        f"任务结束：status={job.status.value}"
+        + (
+            f" failure_code={job.failure_code.value}"
+            if job.failure_code
+            else ""
+        ),
+        level="error",
+    )
     store.apply_job_to_task_state(job)
     if job.device_id and job.route == ExecRoute.VISION:
         _dispatch_device(job.device_id)
@@ -369,45 +498,78 @@ def _apply_task_result(job_id: str, result: TaskResult) -> None:
     if job.status in JobStatus.terminal():
         return
 
-    for ev in result.events or []:
-        store.add_job_event(job_id, ev, level="info")
-    for path in result.screenshot_paths or []:
-        store.add_job_event(
-            job_id, "截图已保存", level="info", screenshot_path=str(path)
-        )
+    # 不落库任意 runner 事件原文；仅固定白名单文案
+    if result.events:
+        step_msg = "任务步骤已记录"
+        if (result.extras or {}).get("fake") is True:
+            step_msg = "任务步骤已记录（fake runner）"
+        elif job.route == ExecRoute.PROTOCOL or result.route == ExecRoute.PROTOCOL:
+            step_msg = "任务步骤已记录（protocol mock）"
+        elif job.route == ExecRoute.VISION:
+            step_msg = "任务步骤已记录（vision）"
+        store.add_job_event(job_id, step_msg, level="info")
+    if result.screenshot_paths:
+        store.add_job_event(job_id, "截图已保存（路径不展示）", level="info")
 
     status = _map_result_to_job_status(result)
     job.status = status
     job.result_code = result.code
-    job.message = result.message or ""
-    extras = redact_secrets(dict(result.extras or {}))
-    extras["channel"] = _channel_label(job.route)
-    if result.screenshot_paths:
-        extras["screenshot_paths"] = list(result.screenshot_paths)
-    job.extras = {**(job.extras or {}), **extras}
+    # 禁止持久化 TaskResult.extras；仅固定 channel 元数据
+    job.extras = safe_job_extras_for_route(job.route)
     job.finished_at = result.finished_at or utc_now()
-    if job.started_at:
-        job.duration_ms = int(
-            (job.finished_at - job.started_at).total_seconds() * 1000
-        )
+    if job.started_at and job.finished_at:
+        try:
+            job.duration_ms = int(
+                (job.finished_at - job.started_at).total_seconds() * 1000
+            )
+        except Exception:  # noqa: BLE001
+            job.duration_ms = result.duration_ms
     elif result.duration_ms is not None:
         job.duration_ms = result.duration_ms
     else:
-        job.duration_ms = 0
+        job.duration_ms = None
+
+    err_type = None
+    if isinstance(result.extras, dict):
+        et = result.extras.get("error_type")
+        if isinstance(et, str):
+            err_type = et
+
+    if status == JobStatus.SUCCEEDED:
+        job.failure_code = None
+        job.user_message = fixed_user_message(None, success=True)
+        job.message = job.user_message
+        job.retryable = None
+        job.tech_summary = ""
+    else:
+        fc, um, rt = classify_from_message(
+            result.message or "", code=result.code, status=status
+        )
+        if fc == FailureCode.TARGET_NOT_FOUND and result.code == TaskStatusCode.BLOCKED:
+            job.status = JobStatus.BLOCKED
+        job.failure_code = fc
+        job.user_message = um
+        job.message = um  # 库内 message 也不保留原文
+        job.retryable = rt
+        job.tech_summary = build_tech_summary(
+            failure_code=fc.value if fc else None,
+            result_code=result.code.value if result.code else None,
+            error_type=err_type,
+        )
 
     store.update_job(job)
     level = "info" if status == JobStatus.SUCCEEDED else "error"
-    store.add_job_event(
-        job_id,
-        f"结束 status={status.value} code={result.code.value}: {job.message}",
-        level=level,
-    )
+    end_msg = f"任务结束：status={job.status.value}"
+    if job.failure_code:
+        end_msg += f" failure_code={job.failure_code.value}"
+    store.add_job_event(job_id, end_msg, level=level)
     store.apply_job_to_task_state(job)
     log.info(
-        "job done id=%s task=%s status=%s",
+        "job done id=%s task=%s status=%s failure=%s",
         job_id,
         job.task_key.value,
-        status.value,
+        job.status.value,
+        job.failure_code.value if job.failure_code else "-",
     )
 
 

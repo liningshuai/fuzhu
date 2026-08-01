@@ -41,8 +41,27 @@ uv sync --extra dev
 | Job 状态机 | `queued` → `running` → `succeeded` / `failed` / `blocked` / `cancelled` |
 | 单设备 FIFO | 同一 `device_id` 同时最多 1 个 Vision **running**；其它任务独立 Job 且 **queued**，按创建顺序串行 |
 | 持久化 | SQLite：`data/fuzhu.db`（目录已 gitignore） |
-| 监控 | Web 2.5s 轮询 Job / 日志，无需手动刷新 |
+| 监控 | Web 2.5s 轮询 Job 历史（状态/耗时/失败分类/排队位置），无需手动刷新 |
+| Job 诊断 | `failure_code` + 中文 `user_message` + `retryable`；API 不返回堆栈/路径/口令 |
 | 网络 | 默认 **127.0.0.1:8787**；局域网需 `allow_lan` + `admin_token`，且**仅**可通过请求头 `X-Admin-Token` 传口令（禁止 URL query） |
+
+### Job 失败分类（`failure_code`）
+
+| 代码 | 含义 | 典型 status | retryable |
+|------|------|-------------|-----------|
+| `DEVICE_NOT_BOUND` | 角色未绑定设备 | blocked | false |
+| `DEVICE_BUSY_OR_QUEUED` | 设备忙/排队中（说明态，**不是 failed**） | queued | true |
+| `PRECONDITION_NOT_MET` | 前置界面不满足 | blocked / failed | true |
+| `TARGET_NOT_FOUND` | 预期目标未找到 | blocked / failed | true |
+| `POSTCONDITION_NOT_MET` | 操作后验证失败 | failed | true |
+| `EXECUTION_ERROR` | 本地执行异常 | failed | true |
+| `RECOVERED_AFTER_RESTART` | 进程重启中断未完成 Job | failed | true |
+
+成功或尚未失败时 `failure_code` 为空。Vision 队列：`queue_position` 对 running 固定为 `0`，对排队中为从 1 起的 FIFO 位次；非 Vision 为 `null`。
+
+Job 详情 `events` 仅返回 `id` / `job_id` / `ts` / `level` / `message`（安全文案）；**永不**返回 `screenshot_path`、堆栈、凭据、ADB 命令或本机路径。`tech_summary` 仅库内受控元数据，API 不返回。
+
+`jobs.extras_json` 仅允许固定 `{"channel":"vision"|"protocol_mock"}`（由 `job.route` 生成，从不复制 runner extras）。`GET /api/jobs`、`/api/jobs/{id}`、`/api/logs` 等**不返回** `extras` 字段；`channel_label` 仅由 `route` 推导。
 
 ### 启动 Web 控制台
 

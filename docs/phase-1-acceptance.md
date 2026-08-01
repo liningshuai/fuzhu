@@ -59,7 +59,7 @@
 
 ### 重启策略
 
-- 启动时 `mark_interrupted_jobs()`：所有 `queued`/`running` → **`failed`**（附「进程重启」说明）；
+- 启动时 `mark_interrupted_jobs()`：所有 `queued`/`running` → **`failed`** + `failure_code=RECOVERED_AFTER_RESTART`；
 - **不得**标为 `succeeded`。
 
 ### 状态机
@@ -70,16 +70,34 @@ queued → running → succeeded | failed | blocked | cancelled
 
 不允许其它跳转；queued 不是完成态。
 
+### 诊断字段（Phase 1.5）
+
+Job API 返回：`created_at` / `started_at` / `finished_at` / `duration_ms` / `status` / `failure_code` / `user_message` / `retryable` / `queue_position`。
+
+- `duration_ms` 仅在可计算时返回（缺开始或结束则为 null）。
+- `user_message` 为中文固定安全提示，不含堆栈、口令、路径、ADB 原文。
+- `tech_summary` 仅由 `failure_code`/`result_code`/`error_type` 白名单构造，**API 不返回**。
+- `GET /api/jobs/{id}` 的 `events` 经 `_job_event_dict`：仅 `id,job_id,ts,level,message`；无 `screenshot_path`；历史脏数据输出时亦过滤。
+- `jobs.extras_json` 仅写 `channel=vision|protocol_mock`；Job/logs API **省略** `extras`；历史脏 `extras_json` 不输出。
+
+### 队列位置
+
+- Vision **running**：`queue_position = 0`
+- Vision **queued**：同设备 queued 中 FIFO 的 1-based 位次
+- 非 Vision：`null`
+- 仅快照，不承诺完成时间
+
 ---
 
 ## 3. API 要点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/roles/{id}/tasks/{key}/run` | 返回 `created` / `reused` / `queued` / `queue_position` / `running_job_id` + `job` |
+| POST | `/api/roles/{id}/tasks/{key}/run` | 返回 `created` / `reused` / `queued` / `queue_position` / `running_job_id` + `job`（含诊断字段） |
 | POST | `/api/roles/{id}/run-enabled` | 见上节；`count` 与独立 Job 一致 |
 | GET | `/api/devices/{device_id}/queue` | 设备 FIFO 快照 |
-| GET | `/api/jobs/{id}` | Job + events |
+| GET | `/api/jobs/{id}` | Job 详情 + events；不存在 404 |
+| GET | `/api/jobs` | Job 列表（含诊断字段） |
 
 默认监听 **127.0.0.1:8787**。
 
@@ -131,6 +149,7 @@ queued → running → succeeded | failed | blocked | cancelled
 | LAN WebUI 安全契约 | `tests/test_web_lan_auth.py` |
 | 健康/SQLite/mock/fake vision | `tests/test_phase1.py` |
 | 重启 failed | `test_restart_marks_queued_running_failed` |
+| Job 诊断/失败分类/队列位 | `tests/test_job_diagnostics.py` |
 
 全部使用 fake vision / 脚本化找图，**不连接真实 ADB**。
 

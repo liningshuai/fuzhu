@@ -370,12 +370,30 @@ async function loadTasks() {
   renderTasks();
 }
 
+function retryHint(l) {
+  if (l.status === "succeeded" || l.status === "running") return "";
+  if (l.status === "queued") return "排队中，请等待";
+  if (l.retryable === true) return "可稍后手动重试";
+  if (l.retryable === false) return "不建议重试（需先调整配置/绑定）";
+  return "";
+}
+
+function statusLabel(st) {
+  if (st === "queued") return "排队中";
+  if (st === "running") return "执行中";
+  if (st === "succeeded") return "成功";
+  if (st === "failed") return "失败";
+  if (st === "blocked") return "被阻止";
+  if (st === "cancelled") return "已取消";
+  return st || "—";
+}
+
 async function loadLogs() {
   if (!state.roleId) return;
   state.logs = await api(`/api/roles/${state.roleId}/logs?limit=40`);
   const box = $("#logList");
   if (!state.logs.length) {
-    box.textContent = "暂无日志（Job 记录保存在 SQLite）";
+    box.textContent = "暂无 Job 记录（保存在 SQLite）";
     return;
   }
   box.innerHTML = state.logs
@@ -388,13 +406,31 @@ async function loadLogs() {
           : l.route === "protocol"
             ? "协议模拟（mock）"
             : l.route || "";
-      return `<div class="log">
-        <div class="ts">${fmtTime(l.ts)} · <span class="${cls}">${st}</span>
-          · ${l.task_key} · ${ch}
-          · ${fmtDuration(l.duration_ms)}
+      const um = l.user_message || l.message || "";
+      const q =
+        st === "queued" && l.queue_position != null
+          ? `排队 #${l.queue_position}`
+          : st === "running" && l.queue_position === 0
+            ? "队列位 0（执行中）"
+            : "";
+      const rh = retryHint(l);
+      return `<div class="log log-${escapeHtml(st)}">
+        <div class="ts">
+          <span class="${cls}">${statusLabel(st)}</span>
+          · ${escapeHtml(l.task_key || "")}
+          · ${ch}
+          ${l.failure_code ? ` · <span class="fail-code">${escapeHtml(l.failure_code)}</span>` : ""}
+          ${q ? ` · <span class="tag-queued">${q}</span>` : ""}
         </div>
-        <div class="msg">${escapeHtml(l.message || "")}</div>
-        <div class="job-meta">job_id: <code>${l.job_id || "—"}</code></div>
+        <div class="job-times">
+          创建: ${fmtTime(l.created_at || l.ts)}
+          · 开始: ${fmtTime(l.started_at)}
+          · 结束: ${fmtTime(l.finished_at)}
+          · 耗时: ${fmtDuration(l.duration_ms)}
+        </div>
+        <div class="msg">${escapeHtml(um)}</div>
+        ${rh ? `<div class="retry-hint">${escapeHtml(rh)}</div>` : ""}
+        <div class="job-meta">job_id: <code>${escapeHtml(l.job_id || "—")}</code></div>
       </div>`;
     })
     .join("");

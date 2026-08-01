@@ -173,6 +173,14 @@ input:checked + .slider:before { transform: translateX(18px); }
 .log .bad { color: var(--bad); }
 .log .run { color: #38bdf8; }
 .log .warn { color: var(--warn); }
+.job-times { margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
+.fail-code { color: var(--warn); font-family: ui-monospace, monospace; font-size: 0.72rem; }
+.retry-hint { margin-top: 4px; font-size: 0.75rem; color: #93c5fd; }
+.log-blocked { border-left: 3px solid var(--warn); }
+.log-failed { border-left: 3px solid var(--bad); }
+.log-queued { border-left: 3px solid #fbbf24; }
+.log-succeeded { border-left: 3px solid var(--ok); }
+.log-running { border-left: 3px solid #38bdf8; }
 .impl-field {
   display: flex;
   flex-direction: column;

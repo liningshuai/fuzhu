@@ -62,6 +62,18 @@ class JobStatus(str, Enum):
         return {cls.SUCCEEDED, cls.FAILED, cls.CANCELLED, cls.BLOCKED}
 
 
+class FailureCode(str, Enum):
+    """Job 失败/阻塞分类（机器可读；成功或未失败时为空）。"""
+
+    DEVICE_NOT_BOUND = "DEVICE_NOT_BOUND"
+    DEVICE_BUSY_OR_QUEUED = "DEVICE_BUSY_OR_QUEUED"
+    PRECONDITION_NOT_MET = "PRECONDITION_NOT_MET"
+    TARGET_NOT_FOUND = "TARGET_NOT_FOUND"
+    POSTCONDITION_NOT_MET = "POSTCONDITION_NOT_MET"
+    EXECUTION_ERROR = "EXECUTION_ERROR"
+    RECOVERED_AFTER_RESTART = "RECOVERED_AFTER_RESTART"
+
+
 class ChannelLabel(str, Enum):
     """Web 展示用通道文案键。"""
 
@@ -204,6 +216,11 @@ class Job(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     duration_ms: Optional[int] = None
+    # Phase 1.5 可观测性（API 对用户暴露 user_message/failure_code/retryable）
+    failure_code: Optional[FailureCode] = None
+    user_message: str = ""
+    retryable: Optional[bool] = None
+    tech_summary: str = ""  # 仅库内脱敏摘要；API 不得返回
 
 
 class JobEvent(BaseModel):
