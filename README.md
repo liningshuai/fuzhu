@@ -13,44 +13,57 @@
 ## 环境要求
 
 - Windows + 雷电模拟器 9/最新版（已在 14.0.21.0 规划）
-- Python 3.9+
+- [uv](https://docs.astral.sh/uv/)（负责 Python 版本、虚拟环境和依赖，无需单独装 Python）
 - 模拟器分辨率固定为 1920x1080（平板版），DPI 默认
 
 ## 安装
 
-```bash
-pip install -r requirements.txt
+```powershell
+# 1. 安装 uv（只需一次，PowerShell 执行）
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. 克隆并安装依赖（uv 会自动创建 .venv 并按 uv.lock 精确还原）
+git clone https://github.com/liningshuai/fuzhu.git
+cd fuzhu
+uv sync
 ```
 
 雷电设置里开启 ADB：`设置 → 其他设置 → ADB调试 → 开启本地连接`。
 
 ## 快速开始
 
+所有命令用 `uv run` 执行，不需要手动激活虚拟环境：
+
 ```bash
 # 1. 确认能连上模拟器、查游戏包名（先在模拟器里打开游戏）
-python main.py info
+uv run main.py info
 #    把输出里 mCurrentFocus 的包名填入 config/config.yaml 的 game.package
 
 # 2. 截一张游戏画面
-python main.py shot
+uv run main.py shot
 
 # 3. 从截图里裁剪按钮做成模板图
-python tools/crop_template.py captures/screen_xxxx.png
+uv run tools/crop_template.py captures/screen_xxxx.png
 
 # 4. 验证模板能被识别
-python tools/test_match.py mail/mail_icon.png
+uv run tools/test_match.py mail/mail_icon.png
 
 # 5. 在 config/config.yaml 里把对应任务 enabled 改为 true，然后
-python main.py run mail.yaml   # 单跑一个任务调试
-python main.py once            # 所有启用任务跑一遍
-python main.py loop            # 循环模式，按 interval_minutes 周期执行
+uv run main.py run mail.yaml   # 单跑一个任务调试
+uv run main.py once            # 所有启用任务跑一遍
+uv run main.py loop            # 循环模式，按 interval_minutes 周期执行
 ```
+
+换新机器移植：装好 uv → `git clone` → `uv sync`，环境即完全还原
+（`uv.lock` 锁定了所有依赖的精确版本，务必保留在仓库里）。
 
 ## 目录结构
 
 ```
 fuzhu/
 ├── main.py              入口：info / shot / once / loop / run
+├── pyproject.toml       项目与依赖定义（uv 管理）
+├── uv.lock              依赖锁文件（保证跨机器环境一致，勿删）
 ├── config/config.yaml   全局配置 + 任务开关
 ├── tasks/*.yaml         任务定义（步骤式，不用写代码）
 ├── templates/           模板图（自己裁剪，见 templates/README.md）

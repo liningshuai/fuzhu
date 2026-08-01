@@ -1,0 +1,16 @@
+[project]
+name = "fuzhu"
+version = "0.1.0"
+description = "雷电模拟器《三国兵临天下》日常自动化脚本（ADB + OpenCV 屏幕自动化）"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[tool.uv]
+# 这是脚本型项目，不作为 Python 包构建安装，
+# uv sync 只负责创建 .venv 并装好依赖
+package = false
