@@ -1,0 +1,88 @@
+device:
+  serial: emulator-5554
+  adb_path: C:\leidian\LDPlayer14\adb.exe
+tasks:
+  auto_mail:
+    enabled: false
+    implementation: python
+    pipeline: auto_mail
+    name: 自动领邮件
+    description: 主城→更多→邮件→一键阅读（已实现）
+  daily_wish:
+    enabled: false
+    name: 每日许愿
+    description: 精彩活动→自选4奖励→许愿→七日宝箱
+    selected_rewards:
+    - food_10k_1
+    - food_10k_2
+    - recruit_1
+    - refine_box_10
+    claim_login_chest: false
+  zizhong_station:
+    enabled: false
+    name: 辎重站
+    description: 封地→辎重站→指定资源免费购买3次→返回世界
+    resource: food
+    last_purchase_date: '2026-08-05'
+    purchased_count: 3
+  auto_ask:
+    enabled: false
+    name: 自动问道
+    description: 自动进行问道
+  top_account:
+    enabled: false
+    name: 顶号设置
+    description: 账号互顶策略（占位）
+  sandbox:
+    enabled: false
+    name: 沙盘演义设置
+    description: 沙盘演义自动化（占位）
+  guoguan:
+    enabled: false
+    name: 过关斩将设置
+    description: 大开关=打免费2次；小开关 buy_extra=花元宝买第3次
+    max_runs: 2
+    buy_extra: false
+    battle_timeout: 900
+  legend:
+    enabled: false
+    name: 见证传奇
+    description: 征战→探险→见证传奇→选择英雄→挑战
+    hero: sunjian
+    extra_purchases: 2
+    last_progress_date: '2026-08-06'
+    progress_hero: sunjian
+    completed_count: 4
+    purchased_count: 2
+  mingshi:
+    enabled: false
+    name: 名士拜访
+    description: 主城→商店→名士拜访→购买一次铜钱将领碎片→返回主城
+    last_purchase_date: '2026-08-06'
+    completed_today: true
+  heroes_arena:
+    enabled: false
+    name: 比武大会
+    description: 征战→武馆→比武大会→冠军点赞→报名
+    last_completed_date: '2026-08-05'
+  soul_tower:
+    enabled: false
+    name: 镇魂塔(五合)
+    description: 镇魂塔自动化（占位）
+  reincarnation:
+    enabled: false
+    name: 自动轮回设置(五合)
+    description: 自动轮回（占位）
+  nightmare:
+    enabled: false
+    name: 恒古梦魇(五合)
+    description: 恒古梦魇（占位）
+  stargaze:
+    enabled: true
+    name: 夜观星象
+    description: 封地→书院→免费星晷观星，最多三次后返回主城
+    max_free_observations: 3
+    last_completed_date: ''
+    completed_today: false
+bot:
+  loop_interval: 3

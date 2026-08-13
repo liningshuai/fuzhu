@@ -1,0 +1,17 @@
+id: invalid_vision
+coordinate_base: [1080, 1920]
+start: main
+nodes:
+  main:
+    recognize:
+      type: template
+      template: nav_fief
+      roi: [1000, 1800, 200, 200]
+      threshold: 1.2
+    action:
+      type: none
+    next: [finish]
+    max_times: 2
+  finish:
+    action:
+      type: success

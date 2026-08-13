@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>兵临天下辅助 - 自用版</title>
+  <link rel="stylesheet" href="/static/style.css?v=8" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1 id="title">兵临天下辅助</h1>
+        <p class="sub">本地 ADB 挂机 · 仅供自用 · 不上传账号密码</p>
+      </div>
+      <div class="status-pills">
+        <span id="pill-run" class="pill">未挂机</span>
+        <span id="pill-device" class="pill">设备检测中</span>
+        <span id="pill-game" class="pill">游戏未知</span>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>账号 / 设备</h2>
+      <div class="grid-2">
+        <label>
+          当前设备序列号
+          <div class="row">
+            <select id="serial-select"></select>
+            <button type="button" id="btn-refresh-devices" class="btn ghost">刷新设备</button>
+            <button type="button" id="btn-set-serial" class="btn">切换设备</button>
+          </div>
+        </label>
+        <label>
+          运行信息
+          <div id="run-info" class="info-box">—</div>
+        </label>
+      </div>
+      <p class="hint">
+        说明：本辅助通过雷电模拟器 ADB 控制游戏，不需要把账号密码提交到第三方服务器。
+        请在模拟器里手动登录游戏后，再点“挂机”。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>挂机控制</h2>
+      <div class="row wrap">
+        <button id="btn-start" class="btn primary">挂机</button>
+        <button id="btn-stop" class="btn danger">停止挂机</button>
+        <button id="btn-save" class="btn">保存配置</button>
+        <button id="btn-launch" class="btn ghost">启动游戏</button>
+        <button id="btn-shot" class="btn ghost">截图</button>
+      </div>
+      <p id="action-msg" class="msg"></p>
+      <p class="hint">* 点挂机会按当前开关执行任务；改完功能开关后建议点“保存配置”。</p>
+    </section>
+
+    <section id="warehouse-panel" class="card warehouse-panel">
+      <div class="section-heading">
+        <div>
+          <h2>手动仓库图鉴</h2>
+          <p class="section-lead">仅用于手动盘点仓库，不会启动挂机，也不会更改任务开关或运行配置。</p>
+        </div>
+        <span id="warehouse-status-badge" class="pill warehouse-status-badge">未开始</span>
+      </div>
+      <div class="row wrap warehouse-actions">
+        <button id="btn-warehouse-scan" class="btn primary">扫描仓库</button>
+        <button id="btn-warehouse-stop" class="btn danger">停止扫描</button>
+      </div>
+      <p id="warehouse-action-msg" class="msg warehouse-action-msg"></p>
+      <div class="warehouse-grid">
+        <div class="warehouse-stat">
+          <span class="warehouse-stat-label">状态</span>
+          <strong id="warehouse-status">未开始</strong>
+        </div>
+        <div class="warehouse-stat">
+          <span class="warehouse-stat-label">当前分类</span>
+          <strong id="warehouse-category">—</strong>
+        </div>
+        <div class="warehouse-stat">
+          <span class="warehouse-stat-label">当前页</span>
+          <strong id="warehouse-page">—</strong>
+        </div>
+        <div class="warehouse-stat">
+          <span class="warehouse-stat-label">已完成分类</span>
+          <strong id="warehouse-categories-completed">0</strong>
+        </div>
+        <div class="warehouse-stat">
+          <span class="warehouse-stat-label">已识别道具</span>
+          <strong id="warehouse-items-found">0</strong>
+        </div>
+        <div class="warehouse-stat">
+          <span class="warehouse-stat-label">低置信度</span>
+          <strong id="warehouse-low-confidence">0</strong>
+        </div>
+        <div class="warehouse-stat warehouse-stat-wide">
+          <span class="warehouse-stat-label">提示</span>
+          <strong id="warehouse-message" class="warehouse-message">仓库扫描未开始。</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <h2>功能设置</h2>
+          <p class="section-lead">开关和选项会直接写入当前运行配置，挂机时按这里的状态执行。</p>
+        </div>
+        <div id="task-summary" class="task-summary">读取中</div>
+      </div>
+      <div class="task-toolbar">
+        <label class="search-field">
+          <span class="sr-only">搜索功能</span>
+          <input id="task-search" type="search" placeholder="搜索功能" autocomplete="off" />
+        </label>
+        <select id="task-filter" title="筛选功能状态">
+          <option value="all">全部功能</option>
+          <option value="implemented">已实现</option>
+          <option value="enabled">已开启</option>
+          <option value="placeholder">开发中</option>
+        </select>
+      </div>
+      <div id="task-list" class="task-grid"></div>
+    </section>
+
+    <section class="card">
+      <h2>日志信息</h2>
+      <div id="logs" class="logs"></div>
+    </section>
+
+    <section class="card">
+      <h2>最新截图</h2>
+      <img id="shot" class="shot" alt="尚未截图" />
+    </section>
+
+    <footer class="footer">
+      本地面板默认 http://127.0.0.1:8787 · 请勿暴露到公网 · 使用脚本有封号风险，请自担
+    </footer>
+  </div>
+  <script src="/static/app.js?v=8"></script>
+</body>
+</html>

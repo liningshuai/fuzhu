@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "codex-pets": "^0.3.0"
+  },
+  "_npx": {
+    "packages": [
+      "codex-pets"
+    ]
+  }
+}

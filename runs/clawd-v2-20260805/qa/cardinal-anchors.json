@@ -1,0 +1,66 @@
+{
+  "ok": false,
+  "strip": "C:\\Users\\liningshuai\\Desktop\\code\\\u5175\u4e34\u5929\u4e0b\u8f85\u52a9\\runs\\clawd-v2-20260805\\decoded\\look-cardinals.png",
+  "directions": [
+    "000",
+    "090",
+    "180",
+    "270"
+  ],
+  "errors": [
+    "000 has 5436 non-transparent pixels near its source slot edge",
+    "090 has 5436 non-transparent pixels near its source slot edge",
+    "180 has 5436 non-transparent pixels near its source slot edge",
+    "270 has 5436 non-transparent pixels near its source slot edge"
+  ],
+  "anchors": [
+    {
+      "direction": "000",
+      "source_box": [
+        0,
+        0,
+        418,
+        941
+      ],
+      "used_pixels": 393338,
+      "edge_pixels": 5436,
+      "output": "C:\\Users\\liningshuai\\Desktop\\code\\\u5175\u4e34\u5929\u4e0b\u8f85\u52a9\\runs\\clawd-v2-20260805\\decoded\\look-anchors\\000.png"
+    },
+    {
+      "direction": "090",
+      "source_box": [
+        418,
+        0,
+        836,
+        941
+      ],
+      "used_pixels": 393338,
+      "edge_pixels": 5436,
+      "output": "C:\\Users\\liningshuai\\Desktop\\code\\\u5175\u4e34\u5929\u4e0b\u8f85\u52a9\\runs\\clawd-v2-20260805\\decoded\\look-anchors\\090.png"
+    },
+    {
+      "direction": "180",
+      "source_box": [
+        836,
+        0,
+        1254,
+        941
+      ],
+      "used_pixels": 393338,
+      "edge_pixels": 5436,
+      "output": "C:\\Users\\liningshuai\\Desktop\\code\\\u5175\u4e34\u5929\u4e0b\u8f85\u52a9\\runs\\clawd-v2-20260805\\decoded\\look-anchors\\180.png"
+    },
+    {
+      "direction": "270",
+      "source_box": [
+        1254,
+        0,
+        1672,
+        941
+      ],
+      "used_pixels": 393338,
+      "edge_pixels": 5436,
+      "output": "C:\\Users\\liningshuai\\Desktop\\code\\\u5175\u4e34\u5929\u4e0b\u8f85\u52a9\\runs\\clawd-v2-20260805\\decoded\\look-anchors\\270.png"
+    }
+  ]
+}

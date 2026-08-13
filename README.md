@@ -1,209 +1,194 @@
-# fuzhu — 雷电模拟器游戏日常自动化脚本
+# 兵临天下辅助（自用版）
 
-基于 ADB + OpenCV 模板匹配的本地屏幕自动化框架，用于在雷电模拟器上
-自动完成《三国兵临天下》的日常操作（领邮件、政务、驿馆等）。
+基于 **雷电模拟器 + ADB + 图像识别** 的本地挂机辅助，带简易 Web 控制面板。
 
-**原理**：脚本通过 ADB 连接模拟器 → 截屏 → 图像识别定位按钮 → 模拟点击。
-模拟器必须开着游戏才能工作（不是云端脱机挂机）。
+> 仅供自己账号、自己电脑使用。使用自动化有封号风险，请自行承担。  
+> **不会**把账号密码上传到任何第三方服务器。
 
-> ⚠️ **风险提示**
->
-> - 大多数手游用户协议禁止第三方自动化工具，使用可能导致封号，风险自负。
-> - 本项目**不包含**、也不会加入任何对抗检测、修改客户端、真实协议抓包/签名、代理池或绕风控功能。
-> - **Phase 1 仅限本机、单设备、已授权人工登录环境**；默认监听 `127.0.0.1`，勿对公网暴露。
-> - `protocol/` 目录为 **mock（模拟）**，不会连接游戏服、不会操作游戏客户端。
-> - 当前项目**不支持**真实游戏协议、真实游戏凭据处理、多账号或规模化自动化。
+---
+
+## 和你买的「代练链接」有什么区别？
+
+| | 市面代练链接 | 本项目 |
+|---|---|---|
+| 原理 | 服务端拿账号密码登录游戏协议/云端挂机 | 本机 ADB 操控你已登录的模拟器 |
+| 账号安全 | 密码交给别人，风险高 | 密码只在你本地游戏里 |
+| 费用 | 按月/按卡密 | 自用零成本 |
+| 功能完整度 | 功能很多、成熟 | 框架已搭好，功能按需逐步加 |
+| 依赖 | 对方服务器在线 | 雷电模拟器开着即可 |
+
+市面那种 `http://IP:端口/dl?u=账号&m=token...` 是**云端代练后台**。  
+我们做的是更安全的 **本地 ADB 脚本**，界面风格类似（挂机/停挂机/功能开关/日志），但技术路线不同。
+
+---
 
 ## 环境要求
 
-- Windows + 雷电模拟器 9/最新版（已在 14.0.21.0 规划）
-- [uv](https://docs.astral.sh/uv/)（负责 Python 版本、虚拟环境和依赖，无需单独装 Python）
-- 模拟器分辨率：雷电 1080P 即可；游戏《三国兵临天下》实际截图为竖屏 **1080x1920**
+- Windows + 雷电模拟器 9/14
+- ADB：`C:\leidian\LDPlayer14\adb.exe`（可在 `config/default.yaml` 修改）
+- Python **3.10+**（推荐 3.12）
+- 游戏包名：`com.sgbltx.goodgame`（三国兵临天下）
+- 模拟器分辨率建议固定：**1920×1080**（改分辨率后模板要重采）
 
-## 安装
+当前已检测到设备可连接：`127.0.0.1:5555` / `emulator-5554`。
 
-```powershell
-# 1. 安装 uv（只需一次，PowerShell 执行）
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+---
 
-# 2. 克隆并安装依赖（uv 会自动创建 .venv 并按 uv.lock 精确还原）
-git clone https://github.com/liningshuai/fuzhu.git
-cd fuzhu
-uv sync --extra dev
-```
+## 快速开始
 
-## Phase 1：单设备 Web 控制 MVP
+### 1. 安装依赖
 
-| 文档 | 说明 |
-|------|------|
-| [`docs/local-operations.md`](docs/local-operations.md) | **本机单设备安全运行手册**（边界、WebUI、失败码、安全反馈） |
-| [`docs/phase-1-acceptance.md`](docs/phase-1-acceptance.md) | 技术验收说明 |
-
-当前能力：
-
-| 能力 | 说明 |
-|------|------|
-| 执行通道 | **本地识图执行**（ADB） / **协议模拟（mock，不会操作游戏）** / **不可用** |
-| Job 状态机 | `queued` → `running` → `succeeded` / `failed` / `blocked` / `cancelled` |
-| 单设备 FIFO | 同一 `device_id` 同时最多 1 个 Vision **running**；其它任务独立 Job 且 **queued**，按创建顺序串行 |
-| 持久化 | SQLite：`data/fuzhu.db`（目录已 gitignore） |
-| 监控 | Web 2.5s 轮询 Job 历史（状态/耗时/失败分类/排队位置），无需手动刷新 |
-| Job 诊断 | `failure_code` + 中文 `user_message` + `retryable`；API 不返回堆栈/路径/口令 |
-| 网络 | 默认 **127.0.0.1:8787**；局域网需 `allow_lan` + `admin_token`，且**仅**可通过请求头 `X-Admin-Token` 传口令（禁止 URL query） |
-
-### Job 失败分类（`failure_code`）
-
-| 代码 | 含义 | 典型 status | retryable |
-|------|------|-------------|-----------|
-| `DEVICE_NOT_BOUND` | 角色未绑定设备 | blocked | false |
-| `DEVICE_BUSY_OR_QUEUED` | 设备忙/排队中（说明态，**不是 failed**） | queued | true |
-| `PRECONDITION_NOT_MET` | 前置界面不满足 | blocked / failed | true |
-| `TARGET_NOT_FOUND` | 预期目标未找到 | blocked / failed | true |
-| `POSTCONDITION_NOT_MET` | 操作后验证失败 | failed | true |
-| `EXECUTION_ERROR` | 本地执行异常 | failed | true |
-| `RECOVERED_AFTER_RESTART` | 进程重启中断未完成 Job | failed | true |
-
-成功或尚未失败时 `failure_code` 为空。Vision 队列：`queue_position` 对 running 固定为 `0`，对排队中为从 1 起的 FIFO 位次；非 Vision 为 `null`。
-
-Job 详情 `events` 仅返回 `id` / `job_id` / `ts` / `level` / `message`（安全文案）；**永不**返回 `screenshot_path`、堆栈、凭据、ADB 命令或本机路径。`tech_summary` 仅库内受控元数据，API 不返回。
-
-`jobs.extras_json` 仅允许固定 `{"channel":"vision"|"protocol_mock"}`（由 `job.route` 生成，从不复制 runner extras）。`GET /api/jobs`、`/api/jobs/{id}`、`/api/logs` 等**不返回** `extras` 字段；`channel_label` 仅由 `route` 推导。
-
-### 启动 Web 控制台
+在项目目录打开终端：
 
 ```powershell
-uv sync --extra dev
-uv run fuzhu-api
-# 浏览器打开 http://127.0.0.1:8787
+cd "C:\Users\liningshuai\Desktop\code\兵临天下辅助"
+uv venv --python 3.12
+uv sync --locked
 ```
 
-可选：幂等初始化演示角色/设备（**不覆盖**已有数据）：
+依赖声明和锁定结果由 pyproject.toml 与 uv.lock 管理。requirements.txt 仅作为兼容导出文件，由 uv export 生成，不要直接编辑。
+
+### 2. 环境自检
 
 ```powershell
-uv run fuzhu-seed
+uv run python main.py --check
 ```
 
-### mock 与 Vision 的区别
-
-| | 本地识图执行 (vision) | 协议模拟 (protocol mock) |
-|--|----------------------|---------------------------|
-| 是否操作模拟器 | 是（ADB 点击） | **否** |
-| 是否连游戏服 | 否 | **否**（假数据） |
-| 成功条件 | 前置界面确认 + 操作后验证 | mock 逻辑返回 OK |
-| 适用 | 本机已登录游戏 | 接口/UI 联调 |
-
-在 Web「执行通道偏好」中可切换 `auto` / `vision` / `protocol`。
-
-### 测试
+### 3. 启动控制面板
 
 ```powershell
-uv sync --extra dev
-uv run pytest tests/ -q
+uv run python main.py
 ```
 
-自动化测试使用 fake vision runner，**不会**连接 ADB、不会点击真实模拟器。
+浏览器打开：http://127.0.0.1:8787
 
-### 配置摘录（`config/config.yaml`）
+### 4. 使用流程
 
-```yaml
-api:
-  host: "127.0.0.1"
-  port: 8787
-  allow_lan: false          # true 时必须设置 admin_token，并绑定 0.0.0.0
-  admin_token: ""           # 仅作服务端配置；客户端必须用请求头 X-Admin-Token
-  db_path: "data/fuzhu.db"
-  default_device_id: "local-ldplayer"
+1. 雷电模拟器启动，**手动登录**游戏到主城/大厅（竖屏 **1080×1920**）  
+2. 面板确认「设备在线」（当前常用 `emulator-5554`）  
+3. 打开需要的功能开关（先从「自动领邮件」练手）  
+4. 点 **挂机**，或命令行单次测试：  
+   `uv run python main.py --run auto_mail`  
+5. 看「日志信息」是否 success  
+
+**已实现：自动领邮件**  
+路径：`主城 → 更多 → 邮件 → 一键阅读 → 侧边点击关闭`  
+
+**已实现：过关斩将**  
+路径：
+1. 准备页「开始挑战」`(540,1265)`  
+2. 创建编队再点「开始挑战」`(540,1565)`（不改阵容）  
+3. 等战斗结束 → 领奖  
+
+配置 `config/default.yaml` 或 `config/runtime.yaml` → `tasks.guoguan`：  
+- `max_runs: 2` — 免费次数打几轮  
+- `buy_extra: false` — **开关**：免费用完后是否点「+」花 200 元宝再买 1 次并再打  
+- `battle_timeout: 900` — 单场最长等待秒  
+
+```powershell
+uv run python main.py --run guoguan
+# 想买次数时，把 runtime/default 里 buy_extra 改成 true
 ```
 
-**LAN 鉴权（`allow_lan=true`）**：
+**已实现：辎重站**  
+路径：`主城 → 封地 → 辎重站 → 指定资源免费购买 3 次 → 返回 → 世界回主城`。四类资源共享免费次数，面板中只需选择铜钱、粮草、木材或生铁中的一种；任务不会点击付费购买。
 
-- 管理口令**只能**通过 HTTP 请求头 `X-Admin-Token` 传递。
-- **禁止**把 `admin_token` 写进 URL query（例如 `?admin_token=...`）、书签、截图、访问日志示例、前端 JS 常量。
-- **WebUI**：打开页面后先探测 `/api/health`；LAN 模式下显示「管理口令」输入框（`type=password`），口令仅存当前页内存，验证成功后各 API 带 `X-Admin-Token`；刷新或 401 后需重新输入。不实现“记住口令”。
-- API 示例：`curl -H "X-Admin-Token: <你的口令>" http://<lan-host>:8787/api/roles`
-- `/api/health` 仍可匿名探活；其余 `/api/*` 均需上述请求头。
 
-雷电设置里开启 ADB：`设置 → 其他设置 → ADB调试 → 开启本地连接`。
 
-## 快速开始（CLI 识图）
+---
 
-所有命令用 `uv run` 执行，不需要手动激活虚拟环境：
+## 功能开发顺序（建议）
 
-```bash
-# 1. 确认能连上模拟器、查游戏包名（先在模拟器里打开游戏）
-uv run main.py info
-#    把输出里 mCurrentFocus 的包名填入 config/config.yaml 的 game.package
+市面面板里那些功能，我们按「收益高、流程短」优先：
 
-# 2. 截一张游戏画面
-uv run main.py shot
+1. **自动领邮件**（示例已写好，需采集模板）  
+2. **每日许愿**（示例骨架已写好）  
+3. **自动问道 / 夜观星象**  
+4. **过关斩将 / 群雄比武**  
+5. **镇魂塔 / 轮回 / 梦魇** 等长流程副本  
 
-# 3. 从截图里裁剪按钮做成模板图
-uv run tools/crop_template.py captures/screen_xxxx.png
+每个功能 = **模板图 + 一个 Python 任务类**。
 
-# 4. 验证模板能被识别
-uv run tools/test_match.py mail/mail_icon.png
+---
 
-# 5. 在 config/config.yaml 里把对应任务 enabled 改为 true，然后
-uv run main.py run mail.yaml   # 单跑一个任务调试
-uv run main.py once            # 所有启用任务跑一遍
-uv run main.py loop            # 循环模式，按 interval_minutes 周期执行
+## 如何新增一个功能（核心）
+
+### 步骤 A：采集模板
+
+1. 游戏停在目标界面  
+2. 截图：
+
+```powershell
+uv run python main.py --screenshot
 ```
 
-换新机器移植：装好 uv → `git clone` → `uv sync`，环境即完全还原
-（`uv.lock` 锁定了所有依赖的精确版本，务必保留在仓库里）。
+3. 用画图/PS 看按钮左上角坐标和宽高，裁剪：
+
+```powershell
+uv run python scripts/capture_template.py --name mail_icon --x 1700 --y 200 --w 90 --h 90
+```
+
+模板放到 `assets/templates/*.png`。
+
+### 步骤 B：写任务逻辑
+
+参考 `src/tasks/auto_mail.py`：
+
+1. 新建 `src/tasks/xxx.py`，继承 `BaseTask`  
+2. 在 `src/tasks/registry.py` 的 `IMPLEMENTED` 里注册  
+3. 在 `config/default.yaml` 的 `tasks` 增加开关  
+
+### 步骤 C：在面板启用并挂机
+
+---
 
 ## 目录结构
 
 ```
-fuzhu/
-├── main.py              CLI 入口：info / shot / once / loop / run
-├── api/                 FastAPI + Job 执行 + SQLite
-├── web/                 本机 WebUI
-├── common/              领域模型（Job 状态机、角色、设备）
-├── vision_worker/       识图执行适配
-├── protocol/            协议任务（**仅 mock**）
-├── core/                ADB / 视觉 / 任务引擎
-├── tasks/*.yaml         识图步骤定义（含前后置验证）
-├── templates/           模板图
-├── data/                SQLite（本地，不入库）
-├── docs/phase-1-acceptance.md
-├── tests/               Phase1 自动化测试
-├── config/config.yaml
-└── pyproject.toml
+兵临天下辅助/
+├── main.py                 # 启动入口
+├── requirements.txt
+├── config/default.yaml     # 默认配置
+├── assets/
+│   ├── screenshots/        # 调试截图
+│   └── templates/          # 按钮模板
+├── src/
+│   ├── adb/device.py       # ADB 封装
+│   ├── vision/match.py     # 模板匹配
+│   ├── tasks/              # 各功能任务
+│   ├── bot/engine.py       # 挂机引擎
+│   └── web/                # 控制面板
+├── scripts/capture_template.py
+└── logs/
 ```
 
-## 添加新任务（不用写代码）
+---
 
-1. 在 `tasks/` 下新建一个 yaml，参考 `tasks/mail.yaml`；
-2. 需要识别的按钮先截图裁成模板放入 `templates/`；
-3. 在 `config/config.yaml` 的 `tasks` 列表里登记并 `enabled: true`；
-4. 若走 Web：在 `common/registry_meta.py` 登记 TaskKey 元数据。
+## 风险与边界
 
-支持的步骤类型（action）：
+1. **封号风险**：任何脚本都可能被检测，建议操作间隔随机、不要 24h 过激行为。  
+2. **不要**把本机面板端口映射到公网。  
+3. **不要**再把账号密码填给来路不明的代练站。  
+4. 本项目不做游戏协议破解/外挂注入；只做模拟器 UI 自动化。  
+5. 游戏更新 UI 后，需要重新采集模板。
 
-| action        | 说明 |
-|---------------|------|
-| `tap_image`   | 找图并点击，`optional: true` 表示找不到就跳过；`on_missing: blocked` 可映射阻塞 |
-| `tap_image_all` | 点击画面上所有匹配位置（如一排领取按钮） |
-| `wait_image`  | 等待某图出现（不点击）— 常用作**前置确认** |
-| `wait_gone`   | 等待某图消失 — 常用作**后置验证** |
-| `tap_xy`      | 点击固定坐标 |
-| `swipe`       | 滑动，`from: [x,y]` → `to: [x,y]` |
-| `back`        | 按返回键，`times` 次数 |
-| `sleep`       | 等待秒数 |
-| `start_app` / `stop_app` | 启动/停止游戏 |
-| `repeat`      | 循环；支持 `until_gone` / `empty_is_blocked` / `require_progress` |
-
-各步骤通用参数：`threshold`（相似度阈值，默认 0.85）、`timeout`（等待秒数）、
-`after_sleep`（执行后等待）、`region: [x1,y1,x2,y2]`（限定搜索区域）。
+---
 
 ## 常见问题
 
-- **连不上模拟器**：确认雷电 ADB 调试已开启；多开时第 2 个实例端口是
-  `5557`，改 `config.yaml` 的 `serial`。系统 adb 和雷电 adb 版本冲突时，
-  把 `adb_path` 指向雷电目录下的 `adb.exe`。
-- **找不到图**：用 `tools/test_match.py` 看实际相似度，适当调低
-  `threshold`（不建议低于 0.7）；检查分辨率是否和裁模板时一致。
-- **中文路径**：代码已用 imdecode/imencode 处理，仓库放中文目录下没问题。
-- **Web 重启丢数据？** Phase1 起写入 `data/fuzhu.db`，重启保留。
-- **为什么邮件/政务失败而不是成功？** Phase1 要求可验证；无法确认领取/接受结果时返回 `failed`/`blocked`，禁止假成功。
+**Q: adb devices 是空的？**  
+雷电设置里打开「ADB 调试」，或用雷电多开器看端口，把 `config/default.yaml` 里 `device.serial` 改成对应值。
+
+**Q: 点了挂机没反应？**  
+看日志是不是「缺少模板」。先采集 `mail_icon.png` 等文件。
+
+**Q: 能做成手机浏览器打开的代练链接吗？**  
+可以，但那是另一条「云端协议挂机」路线，开发量和风控都高得多。自用优先本机 ADB。
+
+---
+
+## 下一步你可以让我做的
+
+1. 你打开游戏到主界面，我帮你截图并标定「邮件/许愿」等按钮模板  
+2. 按你最常用的 3～5 个功能，逐个把完整流程写出来  
+3. 加「每日定时任务」「多开多账号队列」

@@ -1,0 +1,15 @@
+id: unknown_next
+coordinate_base: [1080, 1920]
+start: main
+nodes:
+  main:
+    recognize:
+      type: template
+      template: nav_fief
+    action:
+      type: none
+    next: [missing_node]
+    max_times: 2
+  finish:
+    action:
+      type: success

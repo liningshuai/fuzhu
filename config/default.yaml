@@ -1,0 +1,138 @@
+# 兵临天下辅助 - 默认配置
+# 修改后重启服务生效；运行时也可通过 Web 面板热更新部分项
+
+device:
+  # 雷电 ADB 路径
+  adb_path: "C:\\leidian\\LDPlayer14\\adb.exe"
+  # 设备序列号。可用 adb devices 查看
+  # 常见：127.0.0.1:5555  或  emulator-5554
+  serial: "127.0.0.1:5555"
+  # 分辨率（与模拟器保持一致；当前为竖屏 1080x1920）
+  screen_width: 1080
+  screen_height: 1920
+
+game:
+  package: "com.sgbltx.goodgame"
+  # 启动 Activity 可留空，用 monkey 启动
+  activity: ""
+  # 启动后等待秒数
+  launch_wait: 15
+
+vision:
+  # 模板匹配默认阈值
+  match_threshold: 0.82
+  # 截图保存目录（调试用）
+  screenshot_dir: "assets/screenshots"
+  template_dir: "assets/templates"
+
+bot:
+  # 任务循环间隔（秒）
+  loop_interval: 3
+  # 单次操作后随机抖动（秒），降低被检测风险
+  action_jitter: [0.3, 1.2]
+  # 失败重试次数
+  max_retries: 3
+  # 日志目录
+  log_dir: "logs"
+
+# 功能开关（对应 Web 面板「功能设置」）
+# 先实现基础类中的几个，其余占位，后续按优先级补齐
+tasks:
+  # 基础类
+  auto_mail:
+    enabled: true
+    implementation: python
+    pipeline: auto_mail
+    name: "自动领邮件"
+    description: "主城→更多→邮件→一键阅读（已实现）"
+  daily_wish:
+    enabled: false
+    name: "每日许愿"
+    description: "精彩活动→自选4奖励→许愿→七日宝箱"
+    # 自选 4 个奖励 id（见 REWARD_CATALOG，按弹窗格子从左到右从上到下）
+    selected_rewards:
+      - food_10k_1
+      - food_10k_2
+      - recruit_1
+      - refine_box_10
+    # 连续登录 7/7 时是否点紫宝箱
+    claim_login_chest: true
+  zizhong_station:
+    enabled: false
+    name: "辎重站"
+    description: "封地→辎重站→指定资源免费购买3次→返回世界"
+    # 铜钱 / 粮草 / 木材 / 生铁四张卡共享免费购买次数，只选择其中一种资源。
+    resource: "food"
+    # 以下字段由任务按本地日期维护，防止挂机循环重复购买。
+    last_purchase_date: ""
+    purchased_count: 0
+  auto_ask:
+    enabled: false
+    name: "自动问道"
+    description: "自动进行问道"
+  top_account:
+    enabled: false
+    name: "顶号设置"
+    description: "账号互顶策略（占位）"
+  sandbox:
+    enabled: false
+    name: "沙盘演义设置"
+    description: "沙盘演义自动化（占位）"
+  guoguan:
+    enabled: false
+    name: "过关斩将设置"
+    # 大开关 enabled：是否打每天赠送的免费 2 次
+    description: "大开关=打免费2次；小开关 buy_extra=花元宝买第3次"
+    # 使用免费次数打几轮（一般每天 2 次）
+    max_runs: 2
+    # 小开关：true=免费打完后点「+」花 200 元宝买 1 次并再打；false=不买
+    buy_extra: false
+    # 单场战斗最长等待秒数（波次多请调大）
+    battle_timeout: 900
+  legend:
+    enabled: false
+    name: "见证传奇"
+    description: "征战→探险→见证传奇→选择英雄→挑战"
+    hero: ""
+    extra_purchases: 0
+    last_progress_date: ""
+    progress_hero: ""
+    completed_count: 0
+    purchased_count: 0
+  mingshi:
+    enabled: false
+    name: "名士拜访"
+    description: "主城→商店→名士拜访→购买一次铜钱将领碎片→返回主城"
+    last_purchase_date: ""
+    completed_today: false
+  heroes_arena:
+    enabled: false
+    name: "比武大会"
+    description: "征战→武馆→比武大会→冠军点赞→报名"
+    # 任务完成后按日期记录，避免挂机循环重复点赞/报名。
+    last_completed_date: ""
+  soul_tower:
+    enabled: false
+    name: "镇魂塔(五合)"
+    description: "镇魂塔自动化（占位）"
+  reincarnation:
+    enabled: false
+    name: "自动轮回设置(五合)"
+    description: "自动轮回（占位）"
+  nightmare:
+    enabled: false
+    name: "恒古梦魇(五合)"
+    description: "恒古梦魇（占位）"
+  stargaze:
+    enabled: false
+    name: "夜观星象"
+    description: "封地→书院→免费星晷观星，最多三次后返回主城"
+    max_free_observations: 3
+    last_completed_date: ""
+    completed_today: false
+
+web:
+  host: "127.0.0.1"
+  port: 8787
+  # 仅本机访问；不要把面板暴露到公网
+  title: "兵临天下辅助 - 自用版"

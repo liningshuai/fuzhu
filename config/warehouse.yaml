@@ -1,0 +1,57 @@
+categories:
+  - code: items
+    label: 道具
+    tab_template: warehouse_tab_items
+    tab_tap: [112, 338]
+  - code: skill_fragments
+    label: 技能碎片
+    tab_template: warehouse_tab_skill_fragments
+    tab_tap: [330, 338]
+  - code: arms_fragments
+    label: 军械碎片
+    tab_template: warehouse_tab_arms_fragments
+    tab_tap: [548, 338]
+  - code: treasure_fragments
+    label: 宝物碎片
+    tab_template: warehouse_tab_treasure_fragments
+    tab_tap: [766, 338]
+  - code: specialties
+    label: 特产
+    tab_template: warehouse_tab_specialties
+    tab_tap: [968, 338]
+
+grid:
+  columns: 4
+  rows: 4
+  origin: [52, 404]
+  card_size: [232, 262]
+  column_gap: 18
+  row_gap: 22
+
+rois:
+  icon: [16, 18, 76, 76]
+  text: [96, 20, 120, 208]
+  name: [102, 24, 108, 54]
+  quantity: [102, 188, 108, 34]
+
+ocr_threshold: 0.70
+max_swipes_per_category: 30
+no_new_page_limit: 2
+
+navigation:
+  warehouse_entry_template: warehouse_entry
+  warehouse_entry_tap: [660, 1812]
+  warehouse_title_template: warehouse_title
+  warehouse_ready_template: warehouse_back
+  warehouse_ready_timeout_seconds: 4.0
+  warehouse_ready_poll_interval_seconds: 0.5
+  warehouse_back_template: warehouse_back
+  warehouse_back_tap: [64, 214]
+  main_city_template: nav_fief
+  swipe_start: [540, 1560]
+  swipe_end: [540, 760]
+  swipe_duration_ms: 350
+  max_open_attempts: 2
+  max_return_rounds: 2
+
+artifact_dir: runs/warehouse

@@ -1,0 +1,18 @@
+id: demo
+coordinate_base: [1080, 1920]
+start: main
+nodes:
+  main:
+    recognize:
+      type: template
+      template: nav_fief
+      roi: [0, 1650, 1080, 270]
+      threshold: 0.78
+    action:
+      type: tap_self
+    next: [finish]
+    max_times: 3
+    delay: 0.2
+  finish:
+    action:
+      type: success

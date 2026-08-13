@@ -1,0 +1,109 @@
+id: auto_mail
+coordinate_base: [1080, 1920]
+start: main_city
+
+nodes:
+  main_city:
+    recognize:
+      type: template
+      template: nav_fief
+      roi: [0, 1450, 250, 470]
+      threshold: 0.78
+    action: none
+    next: [open_more, open_more_fallback]
+    error_next: [fail]
+    max_times: 3
+
+  open_more:
+    recognize:
+      type: template
+      template: btn_more
+      threshold: 0.70
+    action: tap_self
+    next: [more_open]
+    error_next: [main_city]
+    max_times: 2
+
+  open_more_fallback:
+    action:
+      type: tap
+      point: [985, 1625]
+    next: [more_open]
+    error_next: [fail]
+    max_times: 2
+
+  more_open:
+    recognize:
+      type: template
+      template: more_title
+      threshold: 0.78
+    action: none
+    next: [open_mail]
+    error_next: [open_more]
+    max_times: 3
+
+  open_mail:
+    recognize:
+      type: template
+      template: btn_mail_icon
+      roi: [700, 620, 350, 380]
+      threshold: 0.66
+    action: tap_self
+    next: [mail_open]
+    error_next: [main_city]
+    max_times: 3
+
+  mail_open:
+    recognize:
+      type: template
+      template: mail_title
+      threshold: 0.82
+    action: none
+    next: [read_all]
+    error_next: [open_mail]
+    max_times: 3
+
+  read_all:
+    recognize:
+      type: template
+      template: mail_read_all_tight
+      threshold: 0.72
+    action: tap_self
+    next: [close_mail]
+    error_next: [blank_close]
+    max_times: 2
+
+  close_mail:
+    recognize:
+      type: template
+      template: mail_close
+      threshold: 0.70
+    action: tap_self
+    next: [main_city_after]
+    error_next: [blank_close]
+    max_times: 2
+
+  blank_close:
+    action:
+      type: tap
+      point: [30, 500]
+    next: [main_city_after]
+    error_next: [fail]
+    max_times: 3
+
+  main_city_after:
+    recognize:
+      type: template
+      template: nav_fief
+      roi: [0, 1450, 250, 470]
+      threshold: 0.78
+    action: none
+    next: [success]
+    error_next: [blank_close]
+    max_times: 2
+
+  success:
+    action: success
+
+  fail:
+    action: fail

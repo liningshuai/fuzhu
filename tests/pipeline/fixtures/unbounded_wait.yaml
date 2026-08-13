@@ -1,0 +1,12 @@
+id: unbounded_wait
+coordinate_base: [1080, 1920]
+start: wait_forever
+nodes:
+  wait_forever:
+    action:
+      type: wait
+      seconds: 0.1
+    next: [finish]
+  finish:
+    action:
+      type: success
